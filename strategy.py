@@ -1,24 +1,22 @@
 """
 strategy.py
 
-Moving Average Crossover strategy.
+Moving Average Crossover strategy with optional Multi-Timeframe Confirmation (Option A).
 
 Signal logic:
   - fast MA crosses ABOVE slow MA  -> BUY  (enter long / close short)
   - fast MA crosses BELOW slow MA  -> SELL (enter short / close long)
 
-This is intentionally simple: 2 parameters (fast_period, slow_period) and
-one indicator type choice (SMA or EMA). Fewer parameters = less risk of
-overfitting to historical noise, and it's easy to explain to a buyer.
-
-Timeframe is NOT decided in here - this class works on whatever candle
-data (OHLC dataframe) you pass to it. Resample your raw ticks/candles to
-the timeframe you want BEFORE calling this (see resample_candles below).
-That's what makes the timeframe "configurable" (Option B from our plan).
+Multi-Timeframe Confirmation (Option A):
+  - Uses a higher timeframe (HTF e.g. 15min / 1H) to confirm macro trend direction.
+  - LTF Buy signals are only taken when HTF trend is bullish (HTF Fast MA > HTF Slow MA).
+  - LTF Sell signals are only taken when HTF trend is bearish (HTF Fast MA < HTF Slow MA).
+  - Filters out false counter-trend signals.
 """
 
 from dataclasses import dataclass
 import pandas as pd
+import numpy as np
 from indicators import sma, ema
 
 
@@ -29,6 +27,12 @@ class StrategyConfig:
     ma_type: str = "ema"          # "sma" or "ema"
     price_column: str = "close"   # which price to base MAs on
 
+    # Multi-Timeframe Filter Settings (Option A)
+    use_htf_filter: bool = False
+    htf_timeframe: str = "15min"
+    htf_fast_period: int = 10
+    htf_slow_period: int = 50
+
 
 class MACrossoverStrategy:
     def __init__(
@@ -37,6 +41,8 @@ class MACrossoverStrategy:
         fast_period: int = None,
         slow_period: int = None,
         ma_type: str = None,
+        use_htf_filter: bool = None,
+        htf_timeframe: str = None,
     ):
         if config is not None:
             self.config = config
@@ -45,6 +51,8 @@ class MACrossoverStrategy:
                 fast_period=fast_period if fast_period is not None else 10,
                 slow_period=slow_period if slow_period is not None else 50,
                 ma_type=ma_type if ma_type is not None else "ema",
+                use_htf_filter=use_htf_filter if use_htf_filter is not None else False,
+                htf_timeframe=htf_timeframe if htf_timeframe is not None else "15min",
             )
 
         if self.config.fast_period >= self.config.slow_period:
@@ -53,14 +61,15 @@ class MACrossoverStrategy:
     def _ma_func(self):
         return ema if self.config.ma_type.lower() == "ema" else sma
 
-    def generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+    def generate_signals(self, df: pd.DataFrame, base_df: pd.DataFrame = None) -> pd.DataFrame:
         """
-        df: must contain columns ['open','high','low','close'] indexed by time,
-            sorted ascending (oldest first).
+        df: must contain columns ['open','high','low','close'], sorted ascending.
+        base_df: optional raw 1-min / base granularity candle df for multi-timeframe resampling.
 
         Returns a copy of df with added columns:
-            fast_ma, slow_ma, position (1 = long, -1 = short, 0 = flat),
-            signal (1 = buy triggered this bar, -1 = sell triggered this bar, 0 = none)
+            fast_ma, slow_ma, htf_trend (if HTF enabled),
+            position (1 = long, -1 = short, 0 = flat),
+            signal (1 = buy, -1 = sell, 0 = none)
         """
         out = df.copy()
         ma_func = self._ma_func()
@@ -80,6 +89,32 @@ class MACrossoverStrategy:
         signal[(state == 1) & (prev_state == -1)] = 1     # crossed up -> buy
         signal[(state == -1) & (prev_state == 1)] = -1    # crossed down -> sell
 
+        # Multi-Timeframe Confirmation Filter (Option A)
+        if self.config.use_htf_filter:
+            source_df = base_df if base_df is not None else out
+            htf_df = resample_candles(source_df, self.config.htf_timeframe)
+
+            htf_fast = ma_func(htf_df[self.config.price_column], self.config.htf_fast_period)
+            htf_slow = ma_func(htf_df[self.config.price_column], self.config.htf_slow_period)
+            htf_trend = (htf_fast > htf_slow).map({True: 1, False: -1})
+            htf_df["htf_trend"] = htf_trend
+
+            # Align HTF trend to LTF bars using backward fill / forward fill on Datetime index
+            htf_series = htf_df["htf_trend"]
+            if isinstance(out.index, pd.DatetimeIndex):
+                aligned_htf = htf_series.reindex(out.index, method="ffill")
+            else:
+                aligned_htf = pd.Series(htf_series.values, index=out.index).ffill()
+
+            out["htf_trend"] = aligned_htf
+
+            # Filter LTF signals against HTF trend direction
+            # Buy signal requires HTF == 1; Sell signal requires HTF == -1
+            filtered_signal = pd.Series(0, index=out.index)
+            filtered_signal[(signal == 1) & (out["htf_trend"] == 1)] = 1
+            filtered_signal[(signal == -1) & (out["htf_trend"] == -1)] = -1
+            signal = filtered_signal
+
         out["position"] = state.fillna(0).astype(int)
         out["signal"] = signal
 
@@ -89,11 +124,10 @@ class MACrossoverStrategy:
 def resample_candles(df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
     """
     Resample raw 1-minute (or tick-derived) OHLC candles into a different
-    timeframe, e.g. '5min', '15min', '1H'.
-
-    df must be indexed by a DatetimeIndex with columns open, high, low, close
-    (and optionally volume).
+    timeframe, e.g. '5min', '15min', '1h'.
     """
+    # Normalize timeframe for pandas 3.0+ compatibility ('1H' -> '1h')
+    timeframe_norm = timeframe.replace("H", "h")
     df_copy = df.copy()
     if not isinstance(df_copy.index, pd.DatetimeIndex):
         if "datetime" in df_copy.columns:
@@ -112,7 +146,6 @@ def resample_candles(df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
     if "volume" in df_copy.columns:
         agg["volume"] = "sum"
 
-    resampled = df_copy.resample(timeframe).agg(agg)
+    resampled = df_copy.resample(timeframe_norm).agg(agg)
     resampled = resampled.dropna(subset=["open", "high", "low", "close"])
-    resampled.reset_index(inplace=True)
     return resampled

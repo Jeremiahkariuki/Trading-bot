@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deriv Trading Bot — Control Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --card-bg: #1e293b;
+            --border-color: #334155;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 24px;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #60a5fa, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 9999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            background-color: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .status-badge.active {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: currentColor;
+        }
+
+        .btn-toggle {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .btn-toggle.start {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+        }
+
+        .btn-toggle.stop {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+        }
+
+        .grid-layout {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 24px;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        select, input {
+            width: 100%;
+            padding: 10px 12px;
+            background-color: #0f172a;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.95rem;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .checkbox-group input {
+            width: auto;
+        }
+
+        .btn-primary {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 12px;
+            transition: opacity 0.2s;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .metric-card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 16px;
+        }
+
+        .metric-title {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-top: 6px;
+        }
+
+        .chart-container {
+            height: 320px;
+            margin-bottom: 24px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            color: var(--text-secondary);
+            font-weight: 600;
+            background-color: rgba(15, 23, 42, 0.4);
+        }
+
+        .pnl-positive { color: var(--accent-green); font-weight: 600; }
+        .pnl-negative { color: var(--accent-red); font-weight: 600; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand">
+            <div class="brand-title">Deriv MA Crossover Bot</div>
+            <div id="statusBadge" class="status-badge">
+                <span class="dot"></span> <span id="statusText">STOPPED</span>
+            </div>
+        </div>
+        <button id="toggleBtn" class="btn-toggle start" onclick="toggleBot()">Start Trading Bot</button>
+    </header>
+
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-title">Account Balance</div>
+            <div id="metricBalance" class="metric-value">$1,000.00</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Win Rate</div>
+            <div id="metricWinRate" class="metric-value">-- %</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Profit Factor</div>
+            <div id="metricPF" class="metric-value">--</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">Max Drawdown</div>
+            <div id="metricDrawdown" class="metric-value">-- %</div>
+        </div>
+    </div>
+
+    <div class="grid-layout">
+        <!-- Configuration Controls -->
+        <div class="card">
+            <h3 style="margin-bottom: 16px; font-size: 1.1rem;">Strategy Settings</h3>
+            
+            <div class="form-group">
+                <label for="symbolSelect">Market Symbol</label>
+                <select id="symbolSelect">
+                    {% for key, val in symbols.items %}
+                    <option value="{{ val }}" {% if val == bot_state.symbol %}selected{% endif %}>{{ key }} ({{ val }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="tfSelect">Timeframe</label>
+                <select id="tfSelect">
+                    <option value="1min">1 Minute</option>
+                    <option value="5min" selected>5 Minutes</option>
+                    <option value="15min">15 Minutes</option>
+                    <option value="1h">1 Hour</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="fastMa">Fast MA Period</label>
+                <input type="number" id="fastMa" value="{{ bot_state.fast_ma }}">
+            </div>
+
+            <div class="form-group">
+                <label for="slowMa">Slow MA Period</label>
+                <input type="number" id="slowMa" value="{{ bot_state.slow_ma }}">
+            </div>
+
+            <div class="checkbox-group">
+                <input type="checkbox" id="mtfCheck">
+                <label for="mtfCheck" style="margin-bottom: 0;">Multi-Timeframe Filter (Option A)</label>
+            </div>
+
+            <button class="btn-primary" onclick="runBacktest()">Run Backtest Simulation</button>
+        </div>
+
+        <!-- Chart & Trade Log -->
+        <div class="card">
+            <h3 style="margin-bottom: 16px; font-size: 1.1rem;">Equity Curve & Trades</h3>
+            <div class="chart-container">
+                <canvas id="equityChart"></canvas>
+            </div>
+
+            <h4 style="margin-bottom: 12px; font-size: 0.95rem; color: var(--text-secondary);">Recent Executed Trades</h4>
+            <div style="overflow-x: auto; max-height: 200px;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Entry Time</th>
+                            <th>Side</th>
+                            <th>Entry</th>
+                            <th>Exit</th>
+                            <th>P&L %</th>
+                            <th>Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tradeLogBody">
+                        <tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">Run backtest or start bot to view trades.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let chart;
+
+        function initChart(dataPoints = []) {
+            const ctx = document.getElementById('equityChart').getContext('2d');
+            if (chart) chart.destroy();
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dataPoints.map((_, i) => i + 1),
+                    datasets: [{
+                        label: 'Equity ($)',
+                        data: dataPoints,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.2,
+                        borderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: 'rgba(255,255,255,0.05)' } },
+                        y: { grid: { color: 'rgba(255,255,255,0.05)' } }
+                    }
+                }
+            });
+        }
+
+        async function toggleBot() {
+            const res = await fetch('/api/toggle/', { method: 'POST' });
+            const data = await res.json();
+            updateStatusUI(data.running);
+        }
+
+        function updateStatusUI(running) {
+            const badge = document.getElementById('statusBadge');
+            const text = document.getElementById('statusText');
+            const btn = document.getElementById('toggleBtn');
+
+            if (running) {
+                badge.className = 'status-badge active';
+                text.innerText = 'RUNNING';
+                btn.className = 'btn-toggle stop';
+                btn.innerText = 'Stop Trading Bot';
+            } else {
+                badge.className = 'status-badge';
+                text.innerText = 'STOPPED';
+                btn.className = 'btn-toggle start';
+                btn.innerText = 'Start Trading Bot';
+            }
+        }
+
+        async function runBacktest() {
+            const symbol = document.getElementById('symbolSelect').value;
+            const tf = document.getElementById('tfSelect').value;
+            const fast = document.getElementById('fastMa').value;
+            const slow = document.getElementById('slowMa').value;
+            const mtf = document.getElementById('mtfCheck').checked;
+
+            const url = `/api/backtest/?symbol=${symbol}&timeframe=${tf}&fast_ma=${fast}&slow_ma=${slow}&use_htf=${mtf}`;
+            const res = await fetch(url);
+            const data = await res.json();
+
+            if (data.status === 'success') {
+                document.getElementById('metricWinRate').innerText = `${data.metrics.win_rate_pct}%`;
+                document.getElementById('metricPF').innerText = data.metrics.profit_factor;
+                document.getElementById('metricDrawdown').innerText = `${data.metrics.max_drawdown_pct}%`;
+                document.getElementById('metricBalance').innerText = `$${data.metrics.final_balance.toLocaleString()}`;
+
+                initChart(data.chart_equity);
+
+                const tbody = document.getElementById('tradeLogBody');
+                if (data.trades.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No trades generated.</td></tr>';
+                } else {
+                    tbody.innerHTML = data.trades.map(t => `
+                        <tr>
+                            <td>${t.entry_time.split(' ')[0]}</td>
+                            <td style="color: ${t.direction === 'LONG' ? '#10b981' : '#ef4444'}; font-weight: 600;">${t.direction}</td>
+                            <td>${t.entry_price}</td>
+                            <td>${t.exit_price}</td>
+                            <td class="${t.pnl_pct >= 0 ? 'pnl-positive' : 'pnl-negative'}">${t.pnl_pct >= 0 ? '+' : ''}${t.pnl_pct}%</td>
+                            <td>$${t.balance_after.toLocaleString()}</td>
+                        </tr>
+                    `).join('');
+                }
+            }
+        }
+
+        // Initialize on load
+        window.onload = () => {
+            initChart([1000, 1000]);
+            runBacktest();
+        };
+    </script>
+</body>
+</html>
