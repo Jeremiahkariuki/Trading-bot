@@ -1,101 +1,61 @@
 """
-CLI entry point to fetch real historical data from Deriv API, run MA Crossover strategy,
-and print performance report.
+run_backtest.py
+
+Entry point: pulls real historical data from Deriv, runs the MA crossover
+strategy, and prints an honest performance report.
+
+Usage examples:
+    python run_backtest.py
+    python run_backtest.py --symbol R_75 --granularity 300 --fast 10 --slow 30
+    python run_backtest.py --symbol R_100 --granularity 60 --fast 5 --slow 20 --count 5000
+
+Run this on a machine that has internet access to api.deriv.com
+(this sandbox environment does not).
 """
 
 import argparse
-import sys
-from deriv_client import DerivClient
-from strategy import MACrossoverStrategy, resample_candles
-from backtest import BacktestEngine
+from deriv_client import fetch_candles_sync, SYMBOLS
+from strategy import MACrossoverStrategy, StrategyConfig, resample_candles
+from backtest import Backtester, BacktestConfig, print_report
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Deriv MA Crossover Strategy Backtester"
-    )
-    parser.add_argument(
-        "--symbol", type=str, default="R_75", help="Deriv symbol (default: R_75)"
-    )
-    parser.add_argument(
-        "--granularity",
-        type=int,
-        default=60,
-        help="Base candle granularity in seconds (default: 60)",
-    )
-    parser.add_argument(
-        "--resample",
-        type=str,
-        default="5min",
-        help="Timeframe to resample base candles to (e.g. 5min, 15min, 1H)",
-    )
-    parser.add_argument(
-        "--fast", type=int, default=10, help="Fast MA period (default: 10)"
-    )
-    parser.add_argument(
-        "--slow", type=int, default=30, help="Slow MA period (default: 30)"
-    )
-    parser.add_argument(
-        "--ma-type",
-        type=str,
-        default="ema",
-        choices=["sma", "ema"],
-        help="Type of moving average: 'sma' or 'ema' (default: ema)",
-    )
-    parser.add_argument(
-        "--cost-pct",
-        type=float,
-        default=0.0005,
-        help="Transaction cost per trade as decimal (default: 0.0005 = 0.05%%)",
-    )
-    parser.add_argument(
-        "--count",
-        type=int,
-        default=5000,
-        help="Number of base candles to fetch (default: 5000)",
-    )
-    parser.add_argument(
-        "--capital",
-        type=float,
-        default=10000.0,
-        help="Initial capital balance (default: 10000.0)",
-    )
+    parser = argparse.ArgumentParser(description="Backtest an MA crossover strategy on Deriv data")
+    parser.add_argument("--symbol", default="R_75", help="Deriv symbol, e.g. R_75, R_100 (see SYMBOLS in deriv_client.py)")
+    parser.add_argument("--granularity", type=int, default=60, help="Candle size in seconds fetched from Deriv (60=1min)")
+    parser.add_argument("--resample", default=None, help="Optional pandas resample rule, e.g. '5min','15min','1H'")
+    parser.add_argument("--count", type=int, default=5000, help="Number of candles to fetch (Deriv max ~5000/request)")
+    parser.add_argument("--fast", type=int, default=10, help="Fast MA period")
+    parser.add_argument("--slow", type=int, default=30, help="Slow MA period")
+    parser.add_argument("--ma-type", default="ema", choices=["ema", "sma"])
+    parser.add_argument("--balance", type=float, default=1000.0, help="Starting balance for backtest")
+    parser.add_argument("--risk-pct", type=float, default=1.0, help="Risk per trade as % of balance")
+    parser.add_argument("--cost-pct", type=float, default=0.05, help="Round-trip spread+slippage cost as %% of price")
 
     args = parser.parse_args()
 
-    print(f"Fetching {args.count} historical candles for symbol '{args.symbol}' (granularity: {args.granularity}s)...")
-    try:
-        client = DerivClient()
-        df_base = client.fetch_historical_candles(
-            symbol=args.symbol, granularity=args.granularity, count=args.count
-        )
-        print(f"Successfully fetched {len(df_base)} candles from Deriv API.")
-    except Exception as e:
-        print(f"Error fetching data: {e}", file=sys.stderr)
-        sys.exit(1)
+    print(f"Fetching {args.count} candles for {args.symbol} @ {args.granularity}s granularity...")
+    df = fetch_candles_sync(symbol=args.symbol, granularity_seconds=args.granularity, count=args.count)
+    print(f"Got {len(df)} candles from {df.index[0]} to {df.index[-1]}\n")
 
-    # Timeframe resampling (Option B)
-    if args.resample and args.resample.lower() != "none":
-        print(f"Resampling candles to timeframe: {args.resample}...")
-        df_candles = resample_candles(df_base, args.resample)
-        print(f"Resampled to {len(df_candles)} {args.resample} candles.")
-    else:
-        df_candles = df_base
+    if args.resample:
+        df = resample_candles(df, args.resample)
+        print(f"Resampled to {args.resample}: {len(df)} candles\n")
 
-    # Generate strategy signals
-    print(f"Running strategy ({args.ma_type.upper()} fast={args.fast}, slow={args.slow})...")
-    strategy = MACrossoverStrategy(
-        fast_period=args.fast, slow_period=args.slow, ma_type=args.ma_type
-    )
-    df_signals = strategy.generate_signals(df_candles)
+    strategy = MACrossoverStrategy(StrategyConfig(
+        fast_period=args.fast,
+        slow_period=args.slow,
+        ma_type=args.ma_type,
+    ))
+    signals = strategy.generate_signals(df)
 
-    # Run backtest simulation
-    print("Simulating trades...")
-    engine = BacktestEngine(initial_capital=args.capital, cost_pct=args.cost_pct)
-    results = engine.run(df_signals)
-
-    # Print report
-    engine.print_report(results)
+    backtester = Backtester(BacktestConfig(
+        initial_balance=args.balance,
+        risk_per_trade_pct=args.risk_pct,
+        cost_per_trade_pct=args.cost_pct,
+    ))
+    results = backtester.run(signals)
+    print_report(results)
 
 
 if __name__ == "__main__":
