@@ -1,80 +1,121 @@
 """
-Deriv API client for fetching historical candle data via WebSocket.
+deriv_client.py
+
+Thin wrapper around Deriv's public WebSocket API for pulling historical
+candle data. This uses only the public "ticks_history" call, which does
+NOT require an API token/login - fine for backtesting.
+
+Placing live trades (later stage, after backtesting looks solid) requires
+an authenticated connection with a per-user API token - that comes in a
+later step, kept deliberately separate from this read-only data fetcher.
+
+Docs: https://api.deriv.com  (see "ticks_history" and "Market: Synthetic Indices")
+
+NOTE: This sandbox environment cannot reach api.deriv.com to test this
+file live - test it on your own machine. The request/response shapes
+below follow Deriv's published API spec.
 """
 
+import asyncio
 import json
 import ssl
+from datetime import datetime, timezone
+
 import pandas as pd
-import websocket
+import websockets
+
+DERIV_WS_URL = "wss://ws.derivws.com/websockets/v3?app_id={app_id}"
+
+# Common Deriv synthetic index symbols (volatility indices)
+SYMBOLS = {
+    "volatility_10": "R_10",
+    "volatility_25": "R_25",
+    "volatility_50": "R_50",
+    "volatility_75": "R_75",
+    "volatility_100": "R_100",
+    "volatility_75_1s": "1HZ75V",
+    "volatility_100_1s": "1HZ100V",
+}
+
+
+async def fetch_candles(
+    symbol: str = "R_75",
+    granularity_seconds: int = 60,
+    count: int = 5000,
+    app_id: str = "1089",   # Deriv's public demo app_id, fine for read-only market data
+) -> pd.DataFrame:
+    """
+    Fetch historical 1-min (or other granularity) candles from Deriv.
+
+    granularity_seconds: candle size in seconds. Common values: 60 (1min),
+        300 (5min), 900 (15min), 3600 (1h). Deriv returns whatever raw
+        granularity you ask for - use resample_candles() in strategy.py
+        if you need something Deriv doesn't offer directly.
+    count: number of candles to fetch (Deriv max per request is 5000).
+
+    Returns a DataFrame indexed by UTC timestamp with columns:
+        open, high, low, close
+    """
+    url = DERIV_WS_URL.format(app_id=app_id)
+
+    request = {
+        "ticks_history": symbol,
+        "adjust_start_time": 1,
+        "count": count,
+        "end": "latest",
+        "start": 1,
+        "style": "candles",
+        "granularity": granularity_seconds,
+    }
+
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+
+    async with websockets.connect(url, ssl=ssl_context) as ws:
+        await ws.send(json.dumps(request))
+        response = json.loads(await ws.recv())
+
+    if "error" in response:
+        raise RuntimeError(f"Deriv API error: {response['error'].get('message')}")
+
+    candles = response.get("candles", [])
+    if not candles:
+        raise RuntimeError("No candle data returned - check symbol/granularity/count.")
+
+    df = pd.DataFrame(candles)
+    df["epoch"] = pd.to_datetime(df["epoch"], unit="s", utc=True)
+    df = df.rename(columns={"epoch": "time"}).set_index("time")
+    df = df[["open", "high", "low", "close"]].astype(float)
+    df = df.sort_index()
+    return df
+
+
+def fetch_candles_sync(*args, **kwargs) -> pd.DataFrame:
+    """Blocking convenience wrapper for use outside of async code (e.g. Django views)."""
+    return asyncio.run(fetch_candles(*args, **kwargs))
 
 
 class DerivClient:
-    """
-    Client for interacting with Deriv's public WebSocket API.
-    Does not require authentication for public tick/candle history.
-    """
+    """Class wrapper around fetch_candles_sync for object-oriented usage."""
 
-    WS_URL = "wss://ws.derivws.com/websockets/v3?app_id=1089"
-
-    def __init__(self, ws_url: str = None):
-        self.ws_url = ws_url or self.WS_URL
+    def __init__(self, app_id: str = "1089"):
+        self.app_id = app_id
 
     def fetch_historical_candles(
         self, symbol: str = "R_75", granularity: int = 60, count: int = 5000
     ) -> pd.DataFrame:
-        """
-        Fetches historical OHLC candles for a given symbol and granularity.
+        return fetch_candles_sync(
+            symbol=symbol,
+            granularity_seconds=granularity,
+            count=count,
+            app_id=self.app_id,
+        )
 
-        :param symbol: Deriv symbol (e.g. 'R_75', 'R_10', 'R_100', '1HZ10V')
-        :param granularity: Candle timeframe in seconds (e.g. 60 for 1-minute candles)
-        :param count: Number of candles to fetch (max 5000 per request)
-        :return: pandas DataFrame containing ['epoch', 'open', 'high', 'low', 'close', 'datetime']
-        """
-        request_msg = {
-            "ticks_history": symbol,
-            "adjust_start_time": 1,
-            "count": count,
-            "end": "latest",
-            "start": 1,
-            "style": "candles",
-            "granularity": granularity,
-        }
 
-        try:
-            ssl_context = ssl._create_unverified_context()
-            ws = websocket.create_connection(
-                self.ws_url, timeout=15, sslopt={"cert_reqs": ssl.CERT_NONE}
-            )
-            ws.send(json.dumps(request_msg))
-
-            raw_response = ws.recv()
-            ws.close()
-
-            response = json.loads(raw_response)
-
-            if "error" in response:
-                raise RuntimeError(
-                    f"Deriv API error ({response['error'].get('code')}): {response['error'].get('message')}"
-                )
-
-            if "candles" not in response:
-                raise RuntimeError(
-                    f"Unexpected response format from Deriv API: {response}"
-                )
-
-            candles = response["candles"]
-            if not candles:
-                raise ValueError(f"No candles returned for symbol {symbol}")
-
-            df = pd.DataFrame(candles)
-            # Standardize numeric columns
-            for col in ["open", "high", "low", "close"]:
-                df[col] = df[col].astype(float)
-
-            df["datetime"] = pd.to_datetime(df["epoch"], unit="s")
-            df = df[["epoch", "datetime", "open", "high", "low", "close"]].sort_values("epoch").reset_index(drop=True)
-
-            return df
-
-        except Exception as e:
-            raise RuntimeError(f"Failed to fetch historical data from Deriv API: {str(e)}")
+if __name__ == "__main__":
+    # Quick manual test - run this file directly on a machine with internet
+    # access to confirm connectivity before wiring it into the rest of the app.
+    df = fetch_candles_sync(symbol="R_75", granularity_seconds=60, count=200)
+    print(df.tail())
+    print(f"\nFetched {len(df)} candles for R_75.")
