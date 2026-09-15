@@ -14,6 +14,8 @@ from strategy import MACrossoverStrategy, StrategyConfig, resample_candles
 from backtest import Backtester, BacktestConfig
 from risk_manager import RiskManager, RiskConfig
 
+from bot_worker import TradingBotWorker
+
 # Global in-memory bot state for dashboard demonstration
 BOT_STATE = {
     "running": False,
@@ -26,9 +28,15 @@ BOT_STATE = {
     "daily_pnl": 0.0,
     "active_trades": 0,
     "mode": "PAPER",
+    "api_token": "",
+    "logs": [],
+    "live_trades": [],
+    "last_signal": "HOLD",
+    "last_check_time": None,
 }
 
 risk_mgr = RiskManager(initial_balance=1000.0)
+worker = TradingBotWorker(BOT_STATE, risk_mgr)
 
 
 def index_view(request):
@@ -49,15 +57,21 @@ def api_status_view(request):
         "risk_halted": risk_mgr.trading_halted,
         "halt_reason": risk_mgr.halt_reason,
         "can_trade": can_trade,
+        "worker_active": worker.is_running(),
     })
 
 
 @csrf_exempt
 def api_toggle_view(request):
-    """Toggles bot running state (Start / Stop)."""
+    """Toggles bot running state (Start / Stop) and controls background worker."""
     if request.method == "POST":
         BOT_STATE["running"] = not BOT_STATE["running"]
-        status_label = "STARTED" if BOT_STATE["running"] else "STOPPED"
+        if BOT_STATE["running"]:
+            worker.start()
+            status_label = "STARTED"
+        else:
+            worker.stop()
+            status_label = "STOPPED"
         return JsonResponse({"status": "success", "running": BOT_STATE["running"], "message": f"Trading Bot {status_label}"})
     return JsonResponse({"error": "POST method required"}, status=400)
 

@@ -231,59 +231,72 @@
             <div id="metricBalance" class="metric-value">$1,000.00</div>
         </div>
         <div class="metric-card">
-            <div class="metric-title">Win Rate</div>
-            <div id="metricWinRate" class="metric-value">-- %</div>
+            <div class="metric-title">Last Signal</div>
+            <div id="liveSignal" class="metric-value" style="color: #60a5fa;">HOLD</div>
         </div>
         <div class="metric-card">
-            <div class="metric-title">Profit Factor</div>
-            <div id="metricPF" class="metric-value">--</div>
+            <div class="metric-title">Active Trades</div>
+            <div id="liveActiveTrades" class="metric-value">0</div>
         </div>
         <div class="metric-card">
-            <div class="metric-title">Max Drawdown</div>
-            <div id="metricDrawdown" class="metric-value">-- %</div>
+            <div class="metric-title">Trading Mode</div>
+            <div id="tradingMode" class="metric-value" style="color: #10b981;">PAPER</div>
         </div>
     </div>
 
     <div class="grid-layout">
         <!-- Configuration Controls -->
-        <div class="card">
-            <h3 style="margin-bottom: 16px; font-size: 1.1rem;">Strategy Settings</h3>
-            
-            <div class="form-group">
-                <label for="symbolSelect">Market Symbol</label>
-                <select id="symbolSelect">
-                    {% for key, val in symbols.items %}
-                    <option value="{{ val }}" {% if val == bot_state.symbol %}selected{% endif %}>{{ key }} ({{ val }})</option>
-                    {% endfor %}
-                </select>
+        <div>
+            <div class="card" style="margin-bottom: 24px;">
+                <h3 style="margin-bottom: 16px; font-size: 1.1rem;">Strategy Settings</h3>
+                
+                <div class="form-group">
+                    <label for="symbolSelect">Market Symbol</label>
+                    <select id="symbolSelect">
+                        {% for key, val in symbols.items %}
+                        <option value="{{ val }}" {% if val == bot_state.symbol %}selected{% endif %}>{{ key }} ({{ val }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="tfSelect">Timeframe</label>
+                    <select id="tfSelect">
+                        <option value="1min">1 Minute</option>
+                        <option value="5min" selected>5 Minutes</option>
+                        <option value="15min">15 Minutes</option>
+                        <option value="1h">1 Hour</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="fastMa">Fast MA Period</label>
+                    <input type="number" id="fastMa" value="{{ bot_state.fast_ma }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="slowMa">Slow MA Period</label>
+                    <input type="number" id="slowMa" value="{{ bot_state.slow_ma }}">
+                </div>
+
+                <div class="checkbox-group">
+                    <input type="checkbox" id="mtfCheck">
+                    <label for="mtfCheck" style="margin-bottom: 0;">Multi-Timeframe Filter (Option A)</label>
+                </div>
+
+                <button class="btn-primary" onclick="runBacktest()">Run Backtest Simulation</button>
             </div>
 
-            <div class="form-group">
-                <label for="tfSelect">Timeframe</label>
-                <select id="tfSelect">
-                    <option value="1min">1 Minute</option>
-                    <option value="5min" selected>5 Minutes</option>
-                    <option value="15min">15 Minutes</option>
-                    <option value="1h">1 Hour</option>
-                </select>
+            <!-- Live Background Worker Activity Console -->
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h3 style="font-size: 1.0rem;">Live Worker Console</h3>
+                    <span id="liveLastCheck" style="font-size: 0.75rem; color: var(--text-secondary);">Last check: --</span>
+                </div>
+                <div id="logConsole" style="background-color: #090d16; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; font-family: monospace; font-size: 0.8rem; height: 160px; overflow-y: auto; color: #34d399;">
+                    <div class="log-line">[System] Ready to start background execution loop.</div>
+                </div>
             </div>
-
-            <div class="form-group">
-                <label for="fastMa">Fast MA Period</label>
-                <input type="number" id="fastMa" value="{{ bot_state.fast_ma }}">
-            </div>
-
-            <div class="form-group">
-                <label for="slowMa">Slow MA Period</label>
-                <input type="number" id="slowMa" value="{{ bot_state.slow_ma }}">
-            </div>
-
-            <div class="checkbox-group">
-                <input type="checkbox" id="mtfCheck">
-                <label for="mtfCheck" style="margin-bottom: 0;">Multi-Timeframe Filter (Option A)</label>
-            </div>
-
-            <button class="btn-primary" onclick="runBacktest()">Run Backtest Simulation</button>
         </div>
 
         <!-- Chart & Trade Log -->
@@ -300,9 +313,9 @@
                         <tr>
                             <th>Entry Time</th>
                             <th>Side</th>
-                            <th>Entry</th>
-                            <th>Exit</th>
-                            <th>P&L %</th>
+                            <th>Entry / Details</th>
+                            <th>Contract ID</th>
+                            <th>Stake / P&L</th>
                             <th>Balance</th>
                         </tr>
                     </thead>
@@ -351,6 +364,7 @@
             const res = await fetch('/api/toggle/', { method: 'POST' });
             const data = await res.json();
             updateStatusUI(data.running);
+            pollBotStatus();
         }
 
         function updateStatusUI(running) {
@@ -371,6 +385,44 @@
             }
         }
 
+        async function pollBotStatus() {
+            try {
+                const res = await fetch('/api/status/');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const state = data.state;
+                    updateStatusUI(state.running);
+
+                    document.getElementById('liveSignal').innerText = state.last_signal || 'HOLD';
+                    document.getElementById('liveLastCheck').innerText = state.last_check_time ? `Checked: ${state.last_check_time.split(' ')[1]}` : 'Last check: --';
+                    document.getElementById('liveActiveTrades').innerText = state.active_trades || 0;
+                    document.getElementById('metricBalance').innerText = `$${state.balance.toLocaleString()}`;
+
+                    const logConsole = document.getElementById('logConsole');
+                    if (logConsole && state.logs && state.logs.length > 0) {
+                        logConsole.innerHTML = state.logs.map(log => `<div>${log}</div>`).join('');
+                        logConsole.scrollTop = logConsole.scrollHeight;
+                    }
+
+                    if (state.running && state.live_trades && state.live_trades.length > 0) {
+                        const tbody = document.getElementById('tradeLogBody');
+                        tbody.innerHTML = state.live_trades.map(t => `
+                            <tr>
+                                <td>${t.time}</td>
+                                <td style="color: ${t.type === 'CALL' ? '#10b981' : '#ef4444'}; font-weight: 600;">${t.type}</td>
+                                <td>${t.price}</td>
+                                <td>${t.contract_id}</td>
+                                <td class="pnl-positive">$${t.stake} (${t.mode})</td>
+                                <td>$${state.balance.toLocaleString()}</td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+            } catch (e) {
+                console.error("Status poll error:", e);
+            }
+        }
+
         async function runBacktest() {
             const symbol = document.getElementById('symbolSelect').value;
             const tf = document.getElementById('tfSelect').value;
@@ -383,9 +435,6 @@
             const data = await res.json();
 
             if (data.status === 'success') {
-                document.getElementById('metricWinRate').innerText = `${data.metrics.win_rate_pct}%`;
-                document.getElementById('metricPF').innerText = data.metrics.profit_factor;
-                document.getElementById('metricDrawdown').innerText = `${data.metrics.max_drawdown_pct}%`;
                 document.getElementById('metricBalance').innerText = `$${data.metrics.final_balance.toLocaleString()}`;
 
                 initChart(data.chart_equity);
@@ -408,10 +457,12 @@
             }
         }
 
-        // Initialize on load
+        // Initialize on load and start 3-second polling
         window.onload = () => {
             initChart([1000, 1000]);
             runBacktest();
+            pollBotStatus();
+            setInterval(pollBotStatus, 3000);
         };
     </script>
 </body>
