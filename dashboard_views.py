@@ -144,6 +144,28 @@ def api_backtest_run_view(request):
                 "balance_after": round(t.balance_after, 2),
             })
 
+        # Prepare OHLC and Moving Average series for Candlestick Chart
+        candles_series = []
+        import pandas as pd
+        for idx, row in signals.iterrows():
+            epoch_val = int(row["epoch"]) if "epoch" in row and not pd.isna(row["epoch"]) else None
+            time_val = epoch_val if epoch_val else str(idx).split('.')[0]
+
+            candle_obj = {
+                "time": time_val,
+                "open": round(float(row["open"]), 4),
+                "high": round(float(row["high"]), 4),
+                "low": round(float(row["low"]), 4),
+                "close": round(float(row["close"]), 4),
+            }
+            if "fast_ma" in row and not pd.isna(row["fast_ma"]):
+                candle_obj["fast_ma"] = round(float(row["fast_ma"]), 4)
+            if "slow_ma" in row and not pd.isna(row["slow_ma"]):
+                candle_obj["slow_ma"] = round(float(row["slow_ma"]), 4)
+            if "signal" in row and row["signal"] in [1, -1]:
+                candle_obj["signal"] = int(row["signal"])
+            candles_series.append(candle_obj)
+
         return JsonResponse({
             "status": "success",
             "metrics": {
@@ -156,7 +178,8 @@ def api_backtest_run_view(request):
                 "net_pnl_pct": results.get("net_pnl_pct", 0),
                 "final_balance": results.get("final_balance", BOT_STATE["balance"]),
             },
-            "chart_equity": chart_data[:100],  # sample 100 points for smooth charting
+            "chart_equity": chart_data[:200],
+            "candles": candles_series[-300:],
             "trades": trades_log[:25],
         })
     except Exception as e:

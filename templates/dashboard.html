@@ -6,6 +6,7 @@
     <title>Deriv Trading Bot — Control Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
         :root {
             --bg-dark: #0f172a;
@@ -23,6 +24,39 @@
             margin: 0;
             padding: 0;
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .chart-tab-group {
+            display: flex;
+            gap: 4px;
+            background-color: #0f172a;
+            padding: 4px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .chart-tab-btn {
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .chart-tab-btn.active {
+            background-color: var(--accent-blue);
+            color: white;
         }
 
         body {
@@ -301,12 +335,19 @@
 
         <!-- Chart & Trade Log -->
         <div class="card">
-            <h3 style="margin-bottom: 16px; font-size: 1.1rem;">Equity Curve & Trades</h3>
-            <div class="chart-container">
+            <div class="chart-header">
+                <h3 style="font-size: 1.1rem;">Visualizer</h3>
+                <div class="chart-tab-group">
+                    <button id="tabEquity" class="chart-tab-btn active" onclick="switchChartTab('equity')">Equity Curve</button>
+                    <button id="tabCandles" class="chart-tab-btn" onclick="switchChartTab('candles')">Candlesticks & MAs</button>
+                </div>
+            </div>
+            <div class="chart-container" style="position: relative;">
                 <canvas id="equityChart"></canvas>
+                <div id="candleChartContainer" style="width: 100%; height: 100%; display: none;"></div>
             </div>
 
-            <h4 style="margin-bottom: 12px; font-size: 0.95rem; color: var(--text-secondary);">Recent Executed Trades</h4>
+            <h4 style="margin-top: 16px; margin-bottom: 12px; font-size: 0.95rem; color: var(--text-secondary);">Recent Executed Trades</h4>
             <div style="overflow-x: auto; max-height: 200px;">
                 <table>
                     <thead>
@@ -329,6 +370,147 @@
 
     <script>
         let chart;
+        let candleChart = null;
+        let candlestickSeries = null;
+        let fastMaSeries = null;
+        let slowMaSeries = null;
+        let currentTab = 'equity';
+        let cachedCandlesData = [];
+
+        function switchChartTab(tab) {
+            currentTab = tab;
+            document.getElementById('tabEquity').className = tab === 'equity' ? 'chart-tab-btn active' : 'chart-tab-btn';
+            document.getElementById('tabCandles').className = tab === 'candles' ? 'chart-tab-btn active' : 'chart-tab-btn';
+
+            const canvas = document.getElementById('equityChart');
+            const container = document.getElementById('candleChartContainer');
+
+            if (tab === 'equity') {
+                canvas.style.display = 'block';
+                container.style.display = 'none';
+            } else {
+                canvas.style.display = 'none';
+                container.style.display = 'block';
+                renderCandlestickChart();
+            }
+        }
+
+        function renderCandlestickChart() {
+            const container = document.getElementById('candleChartContainer');
+            if (!container) return;
+
+            if (!candleChart) {
+                candleChart = LightweightCharts.createChart(container, {
+                    layout: {
+                        background: { color: '#1e293b' },
+                        textColor: '#94a3b8',
+                    },
+                    grid: {
+                        vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
+                        horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+                    },
+                    rightPriceScale: {
+                        borderColor: '#334155',
+                    },
+                    timeScale: {
+                        borderColor: '#334155',
+                        timeVisible: true,
+                        secondsVisible: false,
+                    },
+                });
+
+                candlestickSeries = candleChart.addCandlestickSeries({
+                    upColor: '#10b981',
+                    downColor: '#ef4444',
+                    borderVisible: false,
+                    wickUpColor: '#10b981',
+                    wickDownColor: '#ef4444',
+                });
+
+                fastMaSeries = candleChart.addLineSeries({
+                    color: '#60a5fa',
+                    lineWidth: 2,
+                    title: 'Fast MA',
+                });
+
+                slowMaSeries = candleChart.addLineSeries({
+                    color: '#f59e0b',
+                    lineWidth: 2,
+                    title: 'Slow MA',
+                });
+
+                window.addEventListener('resize', () => {
+                    if (candleChart && container) {
+                        candleChart.applyOptions({
+                            width: container.clientWidth,
+                            height: container.clientHeight
+                        });
+                    }
+                });
+            }
+
+            if (cachedCandlesData && cachedCandlesData.length > 0) {
+                const candlesFormatted = [];
+                const fastMaFormatted = [];
+                const slowMaFormatted = [];
+                const markers = [];
+
+                cachedCandlesData.forEach(c => {
+                    let time = typeof c.time === 'number' ? c.time : Math.floor(new Date(c.time).getTime() / 1000);
+                    if (isNaN(time)) time = Math.floor(Date.now() / 1000);
+
+                    candlesFormatted.push({
+                        time: time,
+                        open: c.open,
+                        high: c.high,
+                        low: c.low,
+                        close: c.close,
+                    });
+                    if (c.fast_ma !== null && c.fast_ma !== undefined) {
+                        fastMaFormatted.push({ time: time, value: c.fast_ma });
+                    }
+                    if (c.slow_ma !== null && c.slow_ma !== undefined) {
+                        slowMaFormatted.push({ time: time, value: c.slow_ma });
+                    }
+                    if (c.signal === 1) {
+                        markers.push({
+                            time: time,
+                            position: 'belowBar',
+                            color: '#10b981',
+                            shape: 'arrowUp',
+                            text: 'BUY',
+                        });
+                    } else if (c.signal === -1) {
+                        markers.push({
+                            time: time,
+                            position: 'aboveBar',
+                            color: '#ef4444',
+                            shape: 'arrowDown',
+                            text: 'SELL',
+                        });
+                    }
+                });
+
+                // Deduplicate by time for Lightweight Charts
+                const uniqueCandles = Array.from(new Map(candlesFormatted.map(item => [item.time, item])).values())
+                    .sort((a, b) => a.time - b.time);
+                const uniqueFastMa = Array.from(new Map(fastMaFormatted.map(item => [item.time, item])).values())
+                    .sort((a, b) => a.time - b.time);
+                const uniqueSlowMa = Array.from(new Map(slowMaFormatted.map(item => [item.time, item])).values())
+                    .sort((a, b) => a.time - b.time);
+
+                candlestickSeries.setData(uniqueCandles);
+                fastMaSeries.setData(uniqueFastMa);
+                slowMaSeries.setData(uniqueSlowMa);
+                candlestickSeries.setMarkers(markers);
+                candleChart.timeScale().fitContent();
+            }
+
+            candleChart.applyOptions({
+                width: container.clientWidth,
+                height: container.clientHeight
+            });
+        }
 
         function initChart(dataPoints = []) {
             const ctx = document.getElementById('equityChart').getContext('2d');
@@ -437,7 +619,12 @@
             if (data.status === 'success') {
                 document.getElementById('metricBalance').innerText = `$${data.metrics.final_balance.toLocaleString()}`;
 
+                cachedCandlesData = data.candles || [];
                 initChart(data.chart_equity);
+
+                if (currentTab === 'candles') {
+                    renderCandlestickChart();
+                }
 
                 const tbody = document.getElementById('tradeLogBody');
                 if (data.trades.length === 0) {
