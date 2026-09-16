@@ -5,6 +5,7 @@ Views and REST API endpoints for the Trading Bot Django Dashboard.
 """
 
 import json
+from datetime import datetime
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -73,9 +74,12 @@ def index_view(request):
 
 def api_status_view(request):
     """Returns current bot status, risk state, and balance."""
-    # Run a quick check on open trades if worker is paused
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if not worker.is_running():
         worker.evaluate_open_trades()
+        BOT_STATE["last_check_time"] = now_str
+    elif not BOT_STATE.get("last_check_time"):
+        BOT_STATE["last_check_time"] = now_str
 
     can_trade, reason = risk_mgr.can_open_trade(BOT_STATE["balance"])
     live_trades = BOT_STATE.get("live_trades", [])
