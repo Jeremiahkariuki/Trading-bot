@@ -442,10 +442,17 @@
         </div>
     </div>
 
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" style="position: fixed; top: 24px; right: 24px; z-index: 10000; display: flex; flex-direction: column; gap: 10px; pointer-events: none; max-width: 380px; width: calc(100% - 48px);"></div>
+
     <style>
         @keyframes modalPop {
             from { opacity: 0; transform: scale(0.92); }
             to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes toastSlideIn {
+            from { opacity: 0; transform: translateX(40px); }
+            to { opacity: 1; transform: translateX(0); }
         }
     </style>
 
@@ -756,6 +763,47 @@
             }
         }
 
+        function showToast(message, title = 'Trade Notice', type = 'warning') {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+
+            const toast = document.createElement('div');
+            const isError = type === 'error' || message.includes('halted') || message.includes('limit') || message.includes('Insufficient');
+            toast.style.cssText = `
+                pointer-events: auto;
+                background: #0f172a;
+                border: 1px solid ${isError ? 'rgba(239, 68, 68, 0.4)' : 'rgba(245, 158, 11, 0.4)'};
+                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px ${isError ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)'};
+                border-radius: 10px;
+                padding: 14px 16px;
+                display: flex;
+                align-items: flex-start;
+                gap: 12px;
+                color: #ffffff;
+                font-size: 0.85rem;
+                animation: toastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            `;
+
+            const icon = isError ? '🛑' : '⚠️';
+            toast.innerHTML = `
+                <div style="font-size: 1.2rem; line-height: 1;">${icon}</div>
+                <div style="flex: 1;">
+                    <div style="font-weight: 700; margin-bottom: 2px; color: ${isError ? '#ef4444' : '#f59e0b'};">${title}</div>
+                    <div style="color: #cbd5e1; line-height: 1.4;">${message}</div>
+                </div>
+                <button type="button" onclick="this.parentElement.remove()" style="background: transparent; border: none; color: #64748b; font-size: 1.1rem; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(20px)';
+                toast.style.transition = 'all 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 6000);
+        }
+
         async function placeManualTrade(direction) {
             try {
                 const res = await fetch('/api/manual_trade/', {
@@ -767,7 +815,7 @@
                 if (data.status === 'success') {
                     pollBotStatus();
                 } else if (data.error) {
-                    alert(`⚠️ Trade Error: ${data.error}`);
+                    showToast(data.error, 'Trading Halted', 'error');
                 }
             } catch (e) {
                 console.error("Manual trade error:", e);
