@@ -39,6 +39,23 @@ risk_mgr = RiskManager(initial_balance=1000.0)
 worker = TradingBotWorker(BOT_STATE, risk_mgr)
 
 
+CANDLESTICK_FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0f172a"/>
+  <line x1="18" y1="10" x2="18" y2="54" stroke="#10b981" stroke-width="4" stroke-linecap="round"/>
+  <rect x="13" y="20" width="10" height="22" rx="3" fill="#10b981"/>
+  <line x1="32" y1="8" x2="32" y2="56" stroke="#ef4444" stroke-width="4" stroke-linecap="round"/>
+  <rect x="27" y="16" width="10" height="28" rx="3" fill="#ef4444"/>
+  <line x1="46" y1="12" x2="46" y2="52" stroke="#10b981" stroke-width="4" stroke-linecap="round"/>
+  <rect x="41" y="22" width="10" height="18" rx="3" fill="#10b981"/>
+</svg>"""
+
+
+def favicon_view(request):
+    """Serves market candlestick favicon SVG for browser tab icon."""
+    from django.http import HttpResponse
+    return HttpResponse(CANDLESTICK_FAVICON_SVG, content_type="image/svg+xml")
+
+
 def index_view(request):
     """Renders main dashboard HTML page."""
     context = {
