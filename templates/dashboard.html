@@ -826,6 +826,7 @@
                                 }
 
                                 const exitPriceText = t.exit_price ? (typeof t.exit_price === 'number' ? t.exit_price.toFixed(4) : t.exit_price) : (t.current_price ? (typeof t.current_price === 'number' ? t.current_price.toFixed(4) : t.current_price) : '--');
+                                const balAfterText = typeof t.balance_after === 'number' ? `$${t.balance_after.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : `$${equity.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
 
                                 return `
                                     <tr>
@@ -836,7 +837,7 @@
                                         <td>${exitPriceText}</td>
                                         <td>${statusBadge}</td>
                                         <td>${pnlText}</td>
-                                        <td style="font-weight:600;">$${equity.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                        <td style="font-weight:600;">${balAfterText}</td>
                                     </tr>
                                 `;
                             }).join('');
@@ -866,9 +867,6 @@
         function renderChartFromData(data) {
             if (data.metrics) {
                 const m = data.metrics;
-                if (m.final_balance !== undefined) {
-                    document.getElementById('metricBalance').innerText = `$${m.final_balance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-                }
                 const btTrades = document.getElementById('btTotalTrades');
                 if (btTrades) btTrades.innerText = m.total_trades !== undefined ? m.total_trades : '--';
 
@@ -892,26 +890,6 @@
 
             cachedCandlesData = data.candles || [];
             initChart(data.chart_equity);
-
-            const tbody = document.getElementById('tradeLogBody');
-            if (tbody && data.trades) {
-                if (data.trades.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">No backtest trades generated for this timeframe.</td></tr>';
-                } else {
-                    tbody.innerHTML = data.trades.map(t => `
-                        <tr>
-                            <td>${t.entry_time.split(' ')[0]}</td>
-                            <td>${data.symbol || document.getElementById('symbolSelect').value}</td>
-                            <td style="color: ${t.direction === 'LONG' ? '#10b981' : '#ef4444'}; font-weight: 700;">${t.direction}</td>
-                            <td>${t.entry_price}</td>
-                            <td>${t.exit_price}</td>
-                            <td><span style="background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">BACKTEST</span></td>
-                            <td class="${t.pnl_pct >= 0 ? 'pnl-positive' : 'pnl-negative'}" style="font-weight:600;">${t.pnl_pct >= 0 ? '+' : ''}${t.pnl_pct}%</td>
-                            <td style="font-weight:600;">$${t.balance_after.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                        </tr>
-                    `).join('');
-                }
-            }
 
             if (currentTab === 'candles') {
                 renderCandlestickChart();

@@ -86,6 +86,7 @@ class TradingBotWorker:
 
         now = datetime.now()
         unrealized_sum = 0.0
+        floating_payouts_sum = 0.0
         open_count = 0
 
         for t in live_trades:
@@ -109,13 +110,17 @@ class TradingBotWorker:
 
                     if is_itm:
                         unrealized = round(stake * 0.95, 2)
+                        floating_payout = round(stake * 1.95, 2)
                     else:
                         unrealized = round(-stake, 2)
+                        floating_payout = 0.0
 
                     t["current_price"] = latest_price
                     t["unrealized_pnl"] = unrealized
+                    t["floating_payout"] = floating_payout
                 else:
                     unrealized = t.get("unrealized_pnl", 0.0)
+                    floating_payout = t.get("floating_payout", 0.0)
 
                 # Check if trade duration expired
                 if elapsed >= duration_sec:
@@ -123,27 +128,33 @@ class TradingBotWorker:
                         if latest_price == entry_price:
                             outcome = "DRAW"
                             final_pnl = 0.0
+                            return_payout = stake
                         elif (contract_type == "CALL" and latest_price > entry_price) or \
                              (contract_type == "PUT" and latest_price < entry_price):
                             outcome = "WON"
                             final_pnl = round(stake * 0.95, 2)
+                            return_payout = round(stake * 1.95, 2)
                         else:
                             outcome = "LOST"
                             final_pnl = round(-stake, 2)
+                            return_payout = 0.0
                     else:
                         outcome = "WON" if (now.microsecond % 2 == 0) else "LOST"
                         final_pnl = round(stake * 0.95, 2) if outcome == "WON" else round(-stake, 2)
+                        return_payout = round(stake * 1.95, 2) if outcome == "WON" else 0.0
 
                     t["status"] = outcome
                     t["exit_price"] = latest_price or entry_price
                     t["exit_time"] = now.strftime("%Y-%m-%d %H:%M:%S")
                     t["pnl"] = final_pnl
                     t["unrealized_pnl"] = 0.0
+                    t["floating_payout"] = 0.0
 
-                    # Update settled balance & win/loss stats
+                    # Return payout to settled cash balance
                     current_bal = self.bot_state.get("balance", 1000.0)
-                    new_bal = round(current_bal + final_pnl, 2)
+                    new_bal = round(current_bal + return_payout, 2)
                     self.bot_state["balance"] = new_bal
+                    t["balance_after"] = new_bal
 
                     if outcome == "WON":
                         self.bot_state["wins"] = self.bot_state.get("wins", 0) + 1
@@ -159,12 +170,13 @@ class TradingBotWorker:
                     )
                 else:
                     unrealized_sum += unrealized
+                    floating_payouts_sum += floating_payout
                     open_count += 1
 
         self.bot_state["active_trades"] = open_count
         self.bot_state["unrealized_pnl"] = round(unrealized_sum, 2)
         bal = self.bot_state.get("balance", 1000.0)
-        eq = round(bal + unrealized_sum, 2)
+        eq = round(bal + floating_payouts_sum, 2)
         self.bot_state["equity"] = eq
         initial = self.bot_state.get("initial_balance", 1000.0)
         dpnl = round(eq - initial, 2)
@@ -179,6 +191,10 @@ class TradingBotWorker:
         df_base = fetch_candles_sync(symbol=symbol, granularity_seconds=60, count=2)
         entry_price = float(df_base.iloc[-1].get("close", 1000.0)) if (df_base is not None and not df_base.empty) else 1000.0
 
+        # Deduct stake from cash balance immediately upon order placement
+        current_bal = self.bot_state.get("balance", 1000.0)
+        self.bot_state["balance"] = round(current_bal - stake, 2)
+
         contract_id = f"DEMO_{int(time.time() * 1000)}"
         trade_entry = {
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -191,12 +207,14 @@ class TradingBotWorker:
             "mode": self.bot_state.get("mode", "PAPER"),
             "status": "OPEN",
             "current_price": entry_price,
-            "unrealized_pnl": 0.0,
+            "unrealized_pnl": -stake,
+            "floating_payout": 0.0,
+            "balance_after": self.bot_state["balance"],
         }
 
         live_trades = self.bot_state.setdefault("live_trades", [])
         live_trades.insert(0, trade_entry)
-        self.log(f"Manual {direction} order placed on {symbol} @ {entry_price:.4f} (Stake: ${stake:.2f}, Duration: {duration_seconds}s). ID: {contract_id}")
+        self.log(f"Manual {direction} order placed on {symbol} @ {entry_price:.4f} (Stake: ${stake:.2f}, Duration: {duration_seconds}s). Stake ${stake:.2f} deducted. Cash: ${self.bot_state['balance']:.2f}")
 
         self.evaluate_open_trades(entry_price)
         return {
@@ -276,6 +294,10 @@ class TradingBotWorker:
                                     )
                                 )
 
+                                # Deduct stake from cash balance immediately upon order placement
+                                current_bal = self.bot_state.get("balance", 1000.0)
+                                self.bot_state["balance"] = round(current_bal - stake, 2)
+
                                 live_trades = self.bot_state.setdefault("live_trades", [])
                                 trade_entry = {
                                     "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -288,10 +310,12 @@ class TradingBotWorker:
                                     "mode": trade_result.get("mode", "PAPER"),
                                     "status": "OPEN",
                                     "current_price": price,
-                                    "unrealized_pnl": 0.0,
+                                    "unrealized_pnl": -stake,
+                                    "floating_payout": 0.0,
+                                    "balance_after": self.bot_state["balance"],
                                 }
                                 live_trades.insert(0, trade_entry)
-                                self.log(f"Order executed! Contract ID: {trade_entry['contract_id']}")
+                                self.log(f"Order executed! ID: {trade_entry['contract_id']} | Stake ${stake:.2f} deducted | Cash: ${self.bot_state['balance']:.2f}")
                                 self.evaluate_open_trades(price)
                         else:
                             if int(time.time()) % 60 < 11:
