@@ -480,10 +480,12 @@
                 const fastMaFormatted = [];
                 const slowMaFormatted = [];
                 const markers = [];
+                const tzOffset = -new Date().getTimezoneOffset() * 60;
 
                 cachedCandlesData.forEach(c => {
-                    let time = typeof c.time === 'number' ? c.time : Math.floor(new Date(c.time).getTime() / 1000);
-                    if (isNaN(time)) time = Math.floor(Date.now() / 1000);
+                    let rawTime = typeof c.time === 'number' ? c.time : Math.floor(new Date(c.time).getTime() / 1000);
+                    if (isNaN(rawTime)) rawTime = Math.floor(Date.now() / 1000);
+                    let time = rawTime + tzOffset;
 
                     candlesFormatted.push({
                         time: time,

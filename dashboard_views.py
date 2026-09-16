@@ -165,8 +165,14 @@ def api_backtest_run_view(request):
         candles_series = []
         import pandas as pd
         for idx, row in signals.iterrows():
-            epoch_val = int(row["epoch"]) if "epoch" in row and not pd.isna(row["epoch"]) else None
-            time_val = epoch_val if epoch_val else str(idx).split('.')[0]
+            if isinstance(idx, pd.Timestamp):
+                epoch_val = int(idx.timestamp())
+            elif "epoch" in row and not pd.isna(row["epoch"]):
+                epoch_val = int(row["epoch"])
+            else:
+                epoch_val = None
+
+            time_val = epoch_val if epoch_val is not None else str(idx).split('.')[0]
 
             candle_obj = {
                 "time": time_val,
