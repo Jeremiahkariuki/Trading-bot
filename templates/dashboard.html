@@ -815,7 +815,7 @@
                 if (data.status === 'success') {
                     pollBotStatus();
                 } else if (data.error) {
-                    showToast(data.error, 'Trading Halted', 'error');
+                    showToast(data.error, 'Trading Paused ⚠️', 'warning');
                 }
             } catch (e) {
                 console.error("Manual trade error:", e);

@@ -54,19 +54,19 @@ class RiskManager:
 
         # 0. Enforce positive balance and sufficient stake
         if current_balance <= 0:
-            return False, f"Insufficient balance (${current_balance:.2f}). Account balance must be greater than $0.00."
+            return False, f"Balance is low (${current_balance:.2f}). Click 'Reset $1,000' on the left to add demo funds!"
         if current_balance < stake:
-            return False, f"Insufficient balance (${current_balance:.2f}) for required trade stake (${stake:.2f})."
+            return False, f"Balance too low (${current_balance:.2f}) for a ${stake:.2f} trade. Click 'Reset $1,000' to continue!"
 
         if self.trading_halted:
-            return False, f"Trading halted for today: {self.halt_reason}"
+            return False, f"{self.halt_reason}. Click 'Reset $1,000' on the left to continue trading!"
 
         # 1. Check Max Daily Loss Limit
         max_loss_usd = self.daily_start_balance * (self.config.max_daily_loss_pct / 100.0)
         if self.daily_pnl_usd <= -max_loss_usd:
             self.trading_halted = True
-            self.halt_reason = f"Daily loss limit hit (-${abs(self.daily_pnl_usd):.2f} / -{self.config.max_daily_loss_pct}%)"
-            return False, self.halt_reason
+            self.halt_reason = f"Daily loss limit reached (-${abs(self.daily_pnl_usd):.2f})"
+            return False, f"{self.halt_reason}. Click 'Reset $1,000' on the left to continue trading!"
 
         # 2. Check Max Concurrent Positions
         if self.active_trades_count >= self.config.max_concurrent_trades:
