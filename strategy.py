@@ -56,7 +56,11 @@ class MACrossoverStrategy:
             )
 
         if self.config.fast_period >= self.config.slow_period:
-            raise ValueError("fast_period must be smaller than slow_period")
+            f, s = self.config.fast_period, self.config.slow_period
+            self.config.fast_period = min(f, s)
+            self.config.slow_period = max(f, s)
+            if self.config.fast_period == self.config.slow_period:
+                self.config.fast_period = max(1, self.config.slow_period - 1)
 
     def _ma_func(self):
         return ema if self.config.ma_type.lower() == "ema" else sma

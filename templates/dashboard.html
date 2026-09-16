@@ -421,12 +421,12 @@
 
                 <div class="form-group">
                     <label for="fastMa">Fast MA Period</label>
-                    <input type="number" id="fastMa" value="{{ bot_state.fast_ma }}">
+                    <input type="number" id="fastMa" value="{{ bot_state.fast_ma }}" min="2" max="100" oninput="onSymbolChange()" onchange="onSymbolChange()">
                 </div>
 
                 <div class="form-group">
                     <label for="slowMa">Slow MA Period</label>
-                    <input type="number" id="slowMa" value="{{ bot_state.slow_ma }}">
+                    <input type="number" id="slowMa" value="{{ bot_state.slow_ma }}" min="5" max="300" oninput="onSymbolChange()" onchange="onSymbolChange()">
                 </div>
 
                 <div class="checkbox-group">
@@ -718,6 +718,9 @@
             } else {
                 candleChart.applyOptions({ width: w, height: h });
             }
+
+            if (fastMaSeries && fastInput) fastMaSeries.applyOptions({ title: `Fast EMA (${fastInput.value})` });
+            if (slowMaSeries && slowInput) slowMaSeries.applyOptions({ title: `Slow EMA (${slowInput.value})` });
 
             if (cachedCandlesData && cachedCandlesData.length > 0) {
                 const candlesFormatted = [];
@@ -1362,9 +1365,13 @@
                 const data = await res.json();
                 if (data.status === 'success') {
                     clientCache[cacheKey] = data;
-                    const currentSelectedSymbol = document.getElementById('symbolSelect').value;
-                    const currentSelectedTf = document.getElementById('tfSelect').value;
-                    if (!isPrefetch && currentSelectedSymbol === symbol && currentSelectedTf === tf) {
+                    const curSymbol = document.getElementById('symbolSelect').value;
+                    const curTf = document.getElementById('tfSelect').value;
+                    const curFast = document.getElementById('fastMa').value;
+                    const curSlow = document.getElementById('slowMa').value;
+                    const curMtf = document.getElementById('mtfCheck').checked;
+
+                    if (!isPrefetch && curSymbol === symbol && curTf === tf && String(curFast) === String(fast) && String(curSlow) === String(slow) && Boolean(curMtf) === Boolean(mtf)) {
                         renderChartFromData(data);
                     }
                 } else if (data.error) {
@@ -1388,12 +1395,15 @@
             const mtf = document.getElementById('mtfCheck').checked;
 
             const cacheKey = `${symbol}_${tf}_${fast}_${slow}_${mtf}`;
-            const currentSelectedSymbol = document.getElementById('symbolSelect').value;
-            const currentSelectedTf = document.getElementById('tfSelect').value;
+            const curSymbol = document.getElementById('symbolSelect').value;
+            const curTf = document.getElementById('tfSelect').value;
+            const curFast = document.getElementById('fastMa').value;
+            const curSlow = document.getElementById('slowMa').value;
+            const curMtf = document.getElementById('mtfCheck').checked;
 
             // INSTANT CACHE RENDER (< 1ms)
             if (clientCache[cacheKey]) {
-                if (!isPrefetch && currentSelectedSymbol === symbol && currentSelectedTf === tf) {
+                if (!isPrefetch && curSymbol === symbol && curTf === tf && String(curFast) === String(fast) && String(curSlow) === String(slow) && Boolean(curMtf) === Boolean(mtf)) {
                     updateSymbolBadge(false);
                     renderChartFromData(clientCache[cacheKey]);
                 }
