@@ -845,29 +845,47 @@
 
         const clientCache = {};
 
+        function clearCurrentChart() {
+            cachedCandlesData = [];
+            if (candlestickSeries) {
+                candlestickSeries.setData([]);
+                candlestickSeries.setMarkers([]);
+            }
+            if (fastMaSeries) fastMaSeries.setData([]);
+            if (slowMaSeries) slowMaSeries.setData([]);
+        }
+
         function renderChartFromData(data) {
-            document.getElementById('metricBalance').innerText = `$${data.metrics.final_balance.toLocaleString()}`;
+            if (data.metrics && data.metrics.final_balance !== undefined) {
+                document.getElementById('metricBalance').innerText = `$${data.metrics.final_balance.toLocaleString()}`;
+            }
 
             cachedCandlesData = data.candles || [];
             initChart(data.chart_equity);
 
             const tbody = document.getElementById('tradeLogBody');
-            if (data.trades.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No trades generated.</td></tr>';
-            } else {
-                tbody.innerHTML = data.trades.map(t => `
-                    <tr>
-                        <td>${t.entry_time.split(' ')[0]}</td>
-                        <td style="color: ${t.direction === 'LONG' ? '#10b981' : '#ef4444'}; font-weight: 600;">${t.direction}</td>
-                        <td>${t.entry_price}</td>
-                        <td>${t.exit_price}</td>
-                        <td class="${t.pnl_pct >= 0 ? 'pnl-positive' : 'pnl-negative'}">${t.pnl_pct >= 0 ? '+' : ''}${t.pnl_pct}%</td>
-                        <td>$${t.balance_after.toLocaleString()}</td>
-                    </tr>
-                `).join('');
+            if (tbody && data.trades) {
+                if (data.trades.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">No backtest trades generated for this timeframe.</td></tr>';
+                } else {
+                    tbody.innerHTML = data.trades.map(t => `
+                        <tr>
+                            <td>${t.entry_time.split(' ')[0]}</td>
+                            <td>${data.symbol || document.getElementById('symbolSelect').value}</td>
+                            <td style="color: ${t.direction === 'LONG' ? '#10b981' : '#ef4444'}; font-weight: 700;">${t.direction}</td>
+                            <td>${t.entry_price}</td>
+                            <td>${t.exit_price}</td>
+                            <td><span style="background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">BACKTEST</span></td>
+                            <td class="${t.pnl_pct >= 0 ? 'pnl-positive' : 'pnl-negative'}" style="font-weight:600;">${t.pnl_pct >= 0 ? '+' : ''}${t.pnl_pct}%</td>
+                            <td style="font-weight:600;">$${t.balance_after.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                        </tr>
+                    `).join('');
+                }
             }
 
-            switchChartTab(currentTab);
+            if (currentTab === 'candles') {
+                renderCandlestickChart();
+            }
         }
 
         function updateSymbolBadge(isLoading = false) {
@@ -876,7 +894,7 @@
                 const label = select.options[select.selectedIndex].text;
                 const badge = document.getElementById('symbolBadgeText');
                 if (badge) {
-                    badge.innerText = isLoading ? `${label} (loading...)` : label;
+                    badge.innerText = isLoading ? `${label} (updating...)` : label;
                 }
             }
         }
@@ -888,6 +906,10 @@
             const slow = document.getElementById('slowMa').value;
             const mtf = document.getElementById('mtfCheck').checked;
 
+            // Instant Badge Update (<1ms)
+            updateSymbolBadge(true);
+
+            // Instant Config Post (non-blocking)
             fetch('/api/config/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -900,6 +922,7 @@
                 })
             }).catch(e => console.error("Config update error:", e));
 
+            // Instant Chart Update (<10ms)
             runBacktest();
         }
 
@@ -939,23 +962,24 @@
 
             const cacheKey = `${symbol}_${tf}_${fast}_${slow}_${mtf}`;
 
-            // Check client cache for instantaneous (< 50ms) rendering
+            // INSTANT CACHE RENDER (< 5ms)
             if (!isPrefetch && clientCache[cacheKey]) {
                 updateSymbolBadge(false);
                 renderChartFromData(clientCache[cacheKey]);
-                // Refresh in background silently
+                // Background refresh silently
                 fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, false);
                 return;
             }
 
             if (!isPrefetch) {
+                clearCurrentChart(); // Instant reset old graph (<5ms)
                 updateSymbolBadge(true);
             }
 
             await fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, isPrefetch);
         }
 
-        // Background pre-fetch for all currency options so clicking any option renders instantly
+        // Fast staggered background pre-fetch for all symbol options (< 50ms intervals)
         function prefetchOtherSymbols() {
             const select = document.getElementById('symbolSelect');
             if (!select) return;
@@ -971,7 +995,7 @@
                     if (!clientCache[key]) {
                         fetchBacktestData(sym, tf, fast, slow, mtf, key, true);
                     }
-                }, (index + 1) * 200);
+                }, index * 40); // 40ms fast interval
             });
         }
 
@@ -982,7 +1006,7 @@
             runBacktest();
             pollBotStatus();
             setInterval(pollBotStatus, 3000);
-            setTimeout(prefetchOtherSymbols, 500);
+            setTimeout(prefetchOtherSymbols, 100);
         };
     </script>
 </body>

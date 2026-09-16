@@ -94,7 +94,7 @@ async def fetch_candles(
 import time
 
 _CANDLE_CACHE = {}
-_CACHE_TTL_SECONDS = 30
+_CACHE_TTL_SECONDS = 120
 
 
 def fetch_candles_sync(*args, **kwargs) -> pd.DataFrame:
