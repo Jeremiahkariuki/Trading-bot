@@ -240,7 +240,11 @@ class TradingBotWorker:
                 slow_ma = int(self.bot_state.get("slow_ma", 30))
                 use_htf = bool(self.bot_state.get("use_htf", False))
 
-                df_base = fetch_candles_sync(symbol=symbol, granularity_seconds=60, count=300)
+                TIMEFRAME_TO_GRANULARITY = {
+                    "1min": 60, "5min": 300, "15min": 900, "1h": 3600, "1hour": 3600, "1 Hour": 3600
+                }
+                granularity = TIMEFRAME_TO_GRANULARITY.get(timeframe, 300)
+                df_base = fetch_candles_sync(symbol=symbol, granularity_seconds=granularity, count=300)
                 self.bot_state["last_check_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                 if df_base is not None and not df_base.empty:
@@ -255,14 +259,15 @@ class TradingBotWorker:
                     self.evaluate_open_trades(latest_price)
 
                     # 2. Check strategy signals
-                    df_tf = resample_candles(df_base, timeframe) if timeframe != "1min" else df_base
+                    df_tf = df_base
 
+                    htf_tf = "15min" if timeframe in ["1min", "5min"] else "4h"
                     strategy = MACrossoverStrategy(StrategyConfig(
                         fast_period=fast_ma,
                         slow_period=slow_ma,
                         ma_type="ema",
                         use_htf_filter=use_htf,
-                        htf_timeframe="15min" if timeframe in ["1min", "5min"] else "1h",
+                        htf_timeframe=htf_tf,
                     ))
                     signals = strategy.generate_signals(df_tf, base_df=df_base)
 

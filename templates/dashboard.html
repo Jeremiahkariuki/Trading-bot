@@ -486,6 +486,21 @@
             </div>
 
             <div class="chart-container" style="position: relative; height: 320px;">
+                <!-- Interactive Overlay Legend for Candlesticks & Signals -->
+                <div id="candleChartLegend" style="position: absolute; top: 10px; left: 12px; z-index: 10; display: flex; gap: 14px; font-size: 0.76rem; font-weight: 600; background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(6px); padding: 5px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; pointer-events: none; align-items: center;">
+                    <span style="display: flex; align-items: center; gap: 5px;">
+                        <span style="width: 12px; height: 3px; background: #60a5fa; border-radius: 2px; display: inline-block;"></span> Fast EMA (<span id="legendFastMa">10</span>)
+                    </span>
+                    <span style="display: flex; align-items: center; gap: 5px;">
+                        <span style="width: 12px; height: 3px; background: #f59e0b; border-radius: 2px; display: inline-block;"></span> Slow EMA (<span id="legendSlowMa">30</span>)
+                    </span>
+                    <span style="display: flex; align-items: center; gap: 4px; color: #10b981;">
+                        <span style="font-size: 0.85rem;">▲</span> BUY Signal
+                    </span>
+                    <span style="display: flex; align-items: center; gap: 4px; color: #ef4444;">
+                        <span style="font-size: 0.85rem;">▼</span> SELL Signal
+                    </span>
+                </div>
                 <div id="candleChartContainer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block;"></div>
                 <canvas id="equityChart" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none;"></canvas>
             </div>
@@ -563,13 +578,16 @@
 
             const canvas = document.getElementById('equityChart');
             const container = document.getElementById('candleChartContainer');
+            const legend = document.getElementById('candleChartLegend');
 
             if (tab === 'equity') {
                 canvas.style.display = 'block';
                 container.style.display = 'none';
+                if (legend) legend.style.display = 'none';
             } else {
                 canvas.style.display = 'none';
                 container.style.display = 'block';
+                if (legend) legend.style.display = 'flex';
                 renderCandlestickChart();
             }
         }
@@ -640,6 +658,13 @@
             const isLight = getTheme() === 'light';
             const w = container.clientWidth || container.offsetWidth || (container.parentElement ? container.parentElement.clientWidth : 600);
             const h = container.clientHeight || container.offsetHeight || 320;
+
+            const fastInput = document.getElementById('fastMa');
+            const slowInput = document.getElementById('slowMa');
+            const lgFast = document.getElementById('legendFastMa');
+            const lgSlow = document.getElementById('legendSlowMa');
+            if (lgFast && fastInput) lgFast.innerText = fastInput.value;
+            if (lgSlow && slowInput) lgSlow.innerText = slowInput.value;
 
             if (!candleChart) {
                 candleChart = LightweightCharts.createChart(container, {
@@ -725,7 +750,8 @@
                             position: 'belowBar',
                             color: '#10b981',
                             shape: 'arrowUp',
-                            text: 'BUY',
+                            text: '⚡ BUY',
+                            size: 2,
                         });
                     } else if (c.signal === -1) {
                         markers.push({
@@ -733,7 +759,8 @@
                             position: 'aboveBar',
                             color: '#ef4444',
                             shape: 'arrowDown',
-                            text: 'SELL',
+                            text: '⚡ SELL',
+                            size: 2,
                         });
                     }
                 });
@@ -750,7 +777,15 @@
                 fastMaSeries.setData(uniqueFastMa);
                 slowMaSeries.setData(uniqueSlowMa);
                 candlestickSeries.setMarkers(markers);
-                candleChart.timeScale().fitContent();
+
+                if (uniqueCandles.length > 50) {
+                    candleChart.timeScale().setVisibleLogicalRange({
+                        from: uniqueCandles.length - 65,
+                        to: uniqueCandles.length - 1
+                    });
+                } else {
+                    candleChart.timeScale().fitContent();
+                }
             }
 
             requestAnimationFrame(() => {

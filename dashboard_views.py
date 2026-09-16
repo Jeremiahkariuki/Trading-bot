@@ -191,6 +191,18 @@ def api_manual_trade_view(request):
 
 
 
+TIMEFRAME_TO_GRANULARITY = {
+    "1min": 60,
+    "5min": 300,
+    "15min": 900,
+    "1h": 3600,
+    "1hour": 3600,
+    "1 Hour": 3600,
+    "4h": 14400,
+    "1d": 86400,
+}
+
+
 @csrf_exempt
 def api_backtest_run_view(request):
     """Executes a real-time backtest on Deriv data for the dashboard chart."""
@@ -199,18 +211,20 @@ def api_backtest_run_view(request):
     fast_ma = int(request.GET.get("fast_ma", BOT_STATE["fast_ma"]))
     slow_ma = int(request.GET.get("slow_ma", BOT_STATE["slow_ma"]))
     use_htf = request.GET.get("use_htf", "false").lower() == "true"
-    count = int(request.GET.get("count", 600))
+    count = int(request.GET.get("count", 500))
 
     try:
-        df_base = fetch_candles_sync(symbol=symbol, granularity_seconds=60, count=count)
-        df_tf = resample_candles(df_base, timeframe) if timeframe != "1min" else df_base
+        granularity = TIMEFRAME_TO_GRANULARITY.get(timeframe, 60)
+        df_base = fetch_candles_sync(symbol=symbol, granularity_seconds=granularity, count=count)
+        df_tf = df_base
 
+        htf_tf = "15min" if timeframe in ["1min", "5min"] else "4h"
         strategy = MACrossoverStrategy(StrategyConfig(
             fast_period=fast_ma,
             slow_period=slow_ma,
             ma_type="ema",
             use_htf_filter=use_htf,
-            htf_timeframe="15min" if timeframe in ["1min", "5min"] else "1h",
+            htf_timeframe=htf_tf,
         ))
         signals = strategy.generate_signals(df_tf, base_df=df_base)
 
