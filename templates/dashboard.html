@@ -260,6 +260,9 @@
 </head>
 
 <body>
+    <div id="networkOfflineNotice" style="display: none; background: linear-gradient(90deg, #ef4444, #dc2626); color: #ffffff; padding: 10px 20px; text-align: center; font-weight: 600; font-size: 0.88rem; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4); border-bottom: 1px solid rgba(255,255,255,0.2); position: sticky; top: 0; z-index: 9999;">
+        ⚠️ Network Disconnected / Slow Connection — Reconnecting to Deriv market feed...
+    </div>
 
     <header>
         <div class="brand">
@@ -267,26 +270,36 @@
             <div id="statusBadge" class="status-badge">
                 <span class="dot"></span> <span id="statusText">STOPPED</span>
             </div>
+            <div id="netStatusBadge" class="status-badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); margin-left: 6px;">
+                <span class="dot" style="background-color: #10b981;" id="netDot"></span> <span id="netStatusText">ONLINE</span>
+            </div>
         </div>
         <button id="toggleBtn" class="btn-toggle start" onclick="toggleBot()">Start Trading Bot</button>
     </header>
 
     <div class="metrics-grid">
         <div class="metric-card">
-            <div class="metric-title">Account Balance</div>
+            <div class="metric-title">Account Balance / Equity</div>
             <div id="metricBalance" class="metric-value">$1,000.00</div>
+            <div id="metricDailyPnl" style="font-size:0.78rem; margin-top:6px; color: var(--text-secondary);">
+                Daily P&L: <span id="dailyPnlVal" style="font-weight:600;">+$0.00 (+0.00%)</span>
+                <span id="floatingPnlVal"></span>
+            </div>
         </div>
         <div class="metric-card">
             <div class="metric-title">Last Signal</div>
             <div id="liveSignal" class="metric-value" style="color: #60a5fa;">HOLD</div>
+            <div id="signalTime" style="font-size:0.78rem; margin-top:6px; color: var(--text-secondary);">--</div>
         </div>
         <div class="metric-card">
             <div class="metric-title">Active Trades</div>
             <div id="liveActiveTrades" class="metric-value">0</div>
+            <div id="activeTradesDetail" style="font-size:0.78rem; margin-top:6px; color: var(--text-secondary);">Open contracts</div>
         </div>
         <div class="metric-card">
             <div class="metric-title">Trading Mode</div>
             <div id="tradingMode" class="metric-value" style="color: #10b981;">PAPER</div>
+            <div id="tradingModeDetail" style="font-size:0.78rem; margin-top:6px; color: var(--text-secondary);">Simulated orders</div>
         </div>
     </div>
 
@@ -331,6 +344,15 @@
                 </div>
 
                 <button class="btn-primary" onclick="runBacktest()">Run Backtest Simulation</button>
+
+                <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-color);">
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;">Instant Trade & Balance Simulator</div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" onclick="placeManualTrade('CALL')" style="flex: 1; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 8px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">⚡ Demo CALL</button>
+                        <button type="button" onclick="placeManualTrade('PUT')" style="flex: 1; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); padding: 8px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">⚡ Demo PUT</button>
+                        <button type="button" onclick="resetAccountBalance()" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); padding: 8px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">🔄 Reset $1,000</button>
+                    </div>
+                </div>
             </div>
 
             <!-- Live Background Worker Activity Console -->
@@ -375,18 +397,19 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Entry Time</th>
+                            <th>Time</th>
+                            <th>Symbol</th>
                             <th>Side</th>
-                            <th>Entry / Details</th>
-                            <th>Contract ID</th>
-                            <th>Stake / P&L</th>
-                            <th>Balance</th>
+                            <th>Entry Price</th>
+                            <th>Current / Exit</th>
+                            <th>Status</th>
+                            <th>Trade P&L</th>
+                            <th>Balance After</th>
                         </tr>
                     </thead>
                     <tbody id="tradeLogBody">
                         <tr>
-                            <td colspan="6" style="text-align: center; color: var(--text-secondary);">Run backtest or
-                                start bot to view trades.</td>
+                            <td colspan="8" style="text-align: center; color: var(--text-secondary);">No active trades yet. Start bot or place demo trade above.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -577,6 +600,45 @@
             pollBotStatus();
         }
 
+        function updateNetworkUI(status, msg) {
+            const banner = document.getElementById('networkOfflineNotice');
+            const badge = document.getElementById('netStatusBadge');
+            const text = document.getElementById('netStatusText');
+            const dot = document.getElementById('netDot');
+
+            if (status === 'OFFLINE') {
+                if (banner) {
+                    banner.style.display = 'block';
+                    if (msg) banner.innerHTML = `⚠️ ${msg}`;
+                }
+                if (badge) {
+                    badge.style.background = 'rgba(239, 68, 68, 0.15)';
+                    badge.style.color = '#ef4444';
+                    badge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+                }
+                if (dot) dot.style.backgroundColor = '#ef4444';
+                if (text) text.innerText = 'OFFLINE';
+            } else {
+                if (banner) banner.style.display = 'none';
+                if (badge) {
+                    badge.style.background = 'rgba(16, 185, 129, 0.15)';
+                    badge.style.color = '#10b981';
+                    badge.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                }
+                if (dot) dot.style.backgroundColor = '#10b981';
+                if (text) text.innerText = 'ONLINE';
+            }
+        }
+
+        window.addEventListener('offline', () => {
+            updateNetworkUI('OFFLINE', 'Browser is offline. Please check your internet connection.');
+        });
+
+        window.addEventListener('online', () => {
+            updateNetworkUI('ONLINE');
+            pollBotStatus();
+        });
+
         function updateStatusUI(running) {
             const badge = document.getElementById('statusBadge');
             const text = document.getElementById('statusText');
@@ -595,17 +657,88 @@
             }
         }
 
+        async function placeManualTrade(direction) {
+            try {
+                const res = await fetch('/api/manual_trade/', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ direction: direction, stake: 10.0, duration: 60 })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    pollBotStatus();
+                } else if (data.error) {
+                    alert(`⚠️ Trade Error: ${data.error}`);
+                }
+            } catch (e) {
+                console.error("Manual trade error:", e);
+                updateNetworkUI('OFFLINE', 'Unable to place trade: Connection offline or slow.');
+            }
+        }
+
+        async function resetAccountBalance() {
+            if (!confirm("Reset paper trading balance to $1,000.00?")) return;
+            try {
+                const res = await fetch('/api/reset_balance/', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ balance: 1000.0 })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    pollBotStatus();
+                }
+            } catch (e) {
+                console.error("Reset balance error:", e);
+                updateNetworkUI('OFFLINE', 'Network error while resetting balance.');
+            }
+        }
+
         async function pollBotStatus() {
             try {
                 const res = await fetch('/api/status/');
+                if (!res.ok) {
+                    throw new Error(`HTTP error ${res.status}`);
+                }
                 const data = await res.json();
                 if (data.status === 'success') {
                     const state = data.state;
                     updateStatusUI(state.running);
 
-                    const bal = typeof state.balance === 'number' ? state.balance : parseFloat(state.balance || 1000);
-                    document.getElementById('metricBalance').innerText = `$${bal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                    if (!navigator.onLine || state.network_status === 'OFFLINE') {
+                        updateNetworkUI('OFFLINE', state.network_error_msg || 'Market feed connection offline. Retrying...');
+                    } else {
+                        updateNetworkUI('ONLINE');
+                    }
 
+                    // ── Account Equity & Settled Balance ──────────────────────────
+                    const equity = typeof state.equity === 'number' ? state.equity : (state.balance || 1000.0);
+                    const bal = typeof state.balance === 'number' ? state.balance : 1000.0;
+                    const initialBal = state.initial_balance || 1000.0;
+                    const dailyPnl = typeof state.daily_pnl === 'number' ? state.daily_pnl : (equity - initialBal);
+                    const dailyPnlPct = typeof state.daily_pnl_pct === 'number' ? state.daily_pnl_pct : ((dailyPnl / initialBal) * 100);
+                    const unrealizedPnl = state.unrealized_pnl || 0.0;
+
+                    document.getElementById('metricBalance').innerText = `$${equity.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+                    const pnlEl = document.getElementById('dailyPnlVal');
+                    if (pnlEl) {
+                        const sign = dailyPnl >= 0 ? '+' : '';
+                        pnlEl.innerText = `${sign}$${dailyPnl.toFixed(2)} (${sign}${dailyPnlPct.toFixed(2)}%)`;
+                        pnlEl.style.color = dailyPnl >= 0 ? '#10b981' : '#ef4444';
+                    }
+
+                    const floatEl = document.getElementById('floatingPnlVal');
+                    if (floatEl) {
+                        if (unrealizedPnl !== 0) {
+                            const floatSign = unrealizedPnl >= 0 ? '+' : '';
+                            floatEl.innerHTML = ` <span style="font-weight:600; color:${unrealizedPnl >= 0 ? '#10b981' : '#ef4444'}; margin-left:4px;">(Float: ${floatSign}$${unrealizedPnl.toFixed(2)})</span>`;
+                        } else {
+                            floatEl.innerHTML = '';
+                        }
+                    }
+
+                    // ── Last Signal + color + timestamp ──────────────────────
                     const sigEl = document.getElementById('liveSignal');
                     const signalText = state.last_signal || 'HOLD';
                     sigEl.innerText = signalText;
@@ -616,40 +749,97 @@
                     } else {
                         sigEl.style.color = '#60a5fa';
                     }
+                    const sigTimeEl = document.getElementById('signalTime');
+                    if (sigTimeEl && state.last_check_time) {
+                        sigTimeEl.innerText = `At: ${state.last_check_time.split(' ')[1] || '--'}`;
+                    }
 
-                    document.getElementById('liveActiveTrades').innerText = state.active_trades || 0;
+                    // ── Active Trades & Stats ─────────────────────────────────
+                    const activeTrades = state.active_trades || 0;
+                    const wins = state.wins || 0;
+                    const losses = state.losses || 0;
+                    const totalClosed = wins + losses;
+                    const winRate = totalClosed > 0 ? ((wins / totalClosed) * 100).toFixed(0) : '0';
 
+                    document.getElementById('liveActiveTrades').innerText = activeTrades;
+                    const activeDetailEl = document.getElementById('activeTradesDetail');
+                    if (activeDetailEl) {
+                        activeDetailEl.innerText = `Win Rate: ${winRate}% (${wins}W / ${losses}L)`;
+                    }
+
+                    // ── Trading Mode + description ───────────────────────────
                     const modeEl = document.getElementById('tradingMode');
+                    const modeDetailEl = document.getElementById('tradingModeDetail');
+                    const modeText = state.mode || 'PAPER';
                     if (modeEl) {
-                        const modeText = state.mode || 'PAPER';
                         modeEl.innerText = modeText;
                         modeEl.style.color = modeText === 'REAL' ? '#ef4444' : '#10b981';
                     }
+                    if (modeDetailEl) {
+                        modeDetailEl.innerText = modeText === 'REAL' ? 'Live real orders' : 'Simulated orders';
+                    }
 
+                    // ── Worker Console timestamp ──────────────────────────────
                     document.getElementById('liveLastCheck').innerText = state.last_check_time ? `Checked: ${state.last_check_time.split(' ')[1]}` : 'Last check: --';
 
+                    // ── Log Console ───────────────────────────────────────────
                     const logConsole = document.getElementById('logConsole');
                     if (logConsole && state.logs && state.logs.length > 0) {
                         logConsole.innerHTML = state.logs.map(log => `<div>${log}</div>`).join('');
                         logConsole.scrollTop = logConsole.scrollHeight;
                     }
 
-                    if (state.running && state.live_trades && state.live_trades.length > 0) {
-                        const tbody = document.getElementById('tradeLogBody');
-                        tbody.innerHTML = state.live_trades.map(t => `
-                            <tr>
-                                <td>${t.time}</td>
-                                <td style="color: ${t.type === 'CALL' ? '#10b981' : '#ef4444'}; font-weight: 600;">${t.type}</td>
-                                <td>${t.price}</td>
-                                <td>${t.contract_id}</td>
-                                <td class="pnl-positive">$${t.stake} (${t.mode})</td>
-                                <td>$${bal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                            </tr>
-                        `).join('');
+                    // ── Live Trade Table ──────────────────────────────────────
+                    const tbody = document.getElementById('tradeLogBody');
+                    if (tbody) {
+                        if (state.live_trades && state.live_trades.length > 0) {
+                            tbody.innerHTML = state.live_trades.map(t => {
+                                const status = t.status || 'OPEN';
+                                let statusBadge = '';
+                                let pnlText = '';
+
+                                if (status === 'OPEN') {
+                                    const un = t.unrealized_pnl || 0.0;
+                                    const unSign = un >= 0 ? '+' : '';
+                                    const pnlColor = un >= 0 ? '#10b981' : '#ef4444';
+                                    statusBadge = `<span style="background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">OPEN</span>`;
+                                    pnlText = `<span style="color:${pnlColor}; font-weight:600;">Float: ${unSign}$${un.toFixed(2)}</span>`;
+                                } else if (status === 'WON') {
+                                    const pnl = t.pnl || 0.0;
+                                    statusBadge = `<span style="background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">WON</span>`;
+                                    pnlText = `<span style="color:#10b981; font-weight:600;">+$${pnl.toFixed(2)}</span>`;
+                                } else if (status === 'LOST') {
+                                    const pnl = t.pnl || 0.0;
+                                    statusBadge = `<span style="background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">LOST</span>`;
+                                    pnlText = `<span style="color:#ef4444; font-weight:600;">-$${Math.abs(pnl).toFixed(2)}</span>`;
+                                } else {
+                                    statusBadge = `<span style="background: rgba(148,163,184,0.15); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">DRAW</span>`;
+                                    pnlText = `<span style="color:#94a3b8;">$0.00</span>`;
+                                }
+
+                                const exitPriceText = t.exit_price ? (typeof t.exit_price === 'number' ? t.exit_price.toFixed(4) : t.exit_price) : (t.current_price ? (typeof t.current_price === 'number' ? t.current_price.toFixed(4) : t.current_price) : '--');
+
+                                return `
+                                    <tr>
+                                        <td>${t.time}</td>
+                                        <td>${t.symbol || state.symbol}</td>
+                                        <td style="color: ${t.type === 'CALL' ? '#10b981' : '#ef4444'}; font-weight: 700;">${t.type}</td>
+                                        <td>${typeof t.price === 'number' ? t.price.toFixed(4) : t.price}</td>
+                                        <td>${exitPriceText}</td>
+                                        <td>${statusBadge}</td>
+                                        <td>${pnlText}</td>
+                                        <td style="font-weight:600;">$${equity.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                    </tr>
+                                `;
+                            }).join('');
+                        } else {
+                            tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">No active trades yet. Start bot or place demo trade above.</td></tr>`;
+                        }
                     }
                 }
             } catch (e) {
-                console.error("Status poll error:", e);
+                console.warn("Status poll network exception:", e);
+                updateNetworkUI('OFFLINE', 'Network connection offline or server unreachable.');
             }
         }
 
@@ -717,6 +907,9 @@
             const url = `/api/backtest/?symbol=${symbol}&timeframe=${tf}&fast_ma=${fast}&slow_ma=${slow}&use_htf=${mtf}&count=500`;
             try {
                 const res = await fetch(url);
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
                 const data = await res.json();
                 if (data.status === 'success') {
                     clientCache[cacheKey] = data;
@@ -724,9 +917,12 @@
                     if (!isPrefetch && currentSelected === symbol) {
                         renderChartFromData(data);
                     }
+                } else if (data.error) {
+                    updateNetworkUI('OFFLINE', data.error);
                 }
             } catch(e) {
                 console.error("Backtest error:", e);
+                updateNetworkUI('OFFLINE', 'Unable to fetch backtest market data: Connection offline or slow.');
             } finally {
                 if (!isPrefetch) {
                     updateSymbolBadge(false);

@@ -51,15 +51,6 @@ async def fetch_candles(
 ) -> pd.DataFrame:
     """
     Fetch historical 1-min (or other granularity) candles from Deriv.
-
-    granularity_seconds: candle size in seconds. Common values: 60 (1min),
-        300 (5min), 900 (15min), 3600 (1h). Deriv returns whatever raw
-        granularity you ask for - use resample_candles() in strategy.py
-        if you need something Deriv doesn't offer directly.
-    count: number of candles to fetch (Deriv max per request is 5000).
-
-    Returns a DataFrame indexed by UTC timestamp with columns:
-        open, high, low, close
     """
     url = DERIV_WS_URL.format(app_id=app_id)
 
@@ -77,9 +68,13 @@ async def fetch_candles(
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
 
-    async with websockets.connect(url, ssl=ssl_context) as ws:
-        await ws.send(json.dumps(request))
-        response = json.loads(await ws.recv())
+    try:
+        async with websockets.connect(url, ssl=ssl_context, timeout=8) as ws:
+            await ws.send(json.dumps(request))
+            raw_resp = await asyncio.wait_for(ws.recv(), timeout=8)
+            response = json.loads(raw_resp)
+    except Exception as e:
+        raise ConnectionError(f"Deriv API connection failed: {str(e)}")
 
     if "error" in response:
         raise RuntimeError(f"Deriv API error: {response['error'].get('message')}")
@@ -103,7 +98,7 @@ _CACHE_TTL_SECONDS = 30
 
 
 def fetch_candles_sync(*args, **kwargs) -> pd.DataFrame:
-    """Blocking convenience wrapper with 30s in-memory cache for ultra-fast UI response."""
+    """Blocking convenience wrapper with 30s in-memory cache and offline fallback."""
     symbol = kwargs.get("symbol", args[0] if len(args) > 0 else "R_75")
     granularity = kwargs.get("granularity_seconds", args[1] if len(args) > 1 else 60)
     count = kwargs.get("count", args[2] if len(args) > 2 else 600)
@@ -115,9 +110,17 @@ def fetch_candles_sync(*args, **kwargs) -> pd.DataFrame:
         if now - timestamp < _CACHE_TTL_SECONDS:
             return cached_df.copy()
 
-    df = asyncio.run(fetch_candles(*args, **kwargs))
-    _CANDLE_CACHE[cache_key] = (df, now)
-    return df.copy()
+    try:
+        df = asyncio.run(fetch_candles(*args, **kwargs))
+        _CANDLE_CACHE[cache_key] = (df, now)
+        return df.copy()
+    except (ConnectionError, OSError, TimeoutError, asyncio.TimeoutError) as e:
+        # If offline or slow connection, fall back to cached data if available
+        if cache_key in _CANDLE_CACHE:
+            cached_df, _ = _CANDLE_CACHE[cache_key]
+            return cached_df.copy()
+        raise ConnectionError(f"Network connection offline: {str(e)}")
+
 
 
 class DerivClient:

@@ -24,9 +24,15 @@ BOT_STATE = {
     "fast_ma": 10,
     "slow_ma": 30,
     "use_htf": False,
+    "initial_balance": 1000.0,
     "balance": 1000.0,
+    "unrealized_pnl": 0.0,
+    "equity": 1000.0,
     "daily_pnl": 0.0,
+    "daily_pnl_pct": 0.0,
     "active_trades": 0,
+    "wins": 0,
+    "losses": 0,
     "mode": "PAPER",
     "api_token": "",
     "logs": [],
@@ -67,10 +73,32 @@ def index_view(request):
 
 def api_status_view(request):
     """Returns current bot status, risk state, and balance."""
+    # Run a quick check on open trades if worker is paused
+    if not worker.is_running():
+        worker.evaluate_open_trades()
+
     can_trade, reason = risk_mgr.can_open_trade(BOT_STATE["balance"])
+    live_trades = BOT_STATE.get("live_trades", [])
+    active_count = len([t for t in live_trades if t.get("status") == "OPEN"])
+    BOT_STATE["active_trades"] = active_count
+
+    # Calculate equity & daily PnL
+    unrealized = BOT_STATE.get("unrealized_pnl", 0.0)
+    balance = BOT_STATE.get("balance", 1000.0)
+    equity = round(balance + unrealized, 2)
+    initial_bal = BOT_STATE.get("initial_balance", 1000.0)
+    daily_pnl = round(equity - initial_bal, 2)
+    daily_pnl_pct = round((daily_pnl / initial_bal) * 100, 2) if initial_bal > 0 else 0.0
+
+    BOT_STATE["equity"] = equity
+    BOT_STATE["daily_pnl"] = daily_pnl
+    BOT_STATE["daily_pnl_pct"] = daily_pnl_pct
+
     return JsonResponse({
         "status": "success",
         "state": BOT_STATE,
+        "network_status": BOT_STATE.get("network_status", "ONLINE"),
+        "network_error": BOT_STATE.get("network_error_msg", ""),
         "risk_halted": risk_mgr.trading_halted,
         "halt_reason": risk_mgr.halt_reason,
         "can_trade": can_trade,
@@ -104,10 +132,59 @@ def api_config_view(request):
             BOT_STATE["fast_ma"] = int(data.get("fast_ma", BOT_STATE["fast_ma"]))
             BOT_STATE["slow_ma"] = int(data.get("slow_ma", BOT_STATE["slow_ma"]))
             BOT_STATE["use_htf"] = bool(data.get("use_htf", BOT_STATE["use_htf"]))
+            BOT_STATE["mode"] = data.get("mode", BOT_STATE["mode"])
+            if "api_token" in data:
+                BOT_STATE["api_token"] = data["api_token"]
             return JsonResponse({"status": "success", "state": BOT_STATE})
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)
     return JsonResponse({"error": "POST method required"}, status=400)
+
+
+@csrf_exempt
+def api_reset_balance_view(request):
+    """Resets paper account balance to initial state ($1,000.00)."""
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body) if request.body else {}
+            new_bal = float(data.get("balance", 1000.0))
+        except Exception:
+            new_bal = 1000.0
+
+        BOT_STATE["initial_balance"] = new_bal
+        BOT_STATE["balance"] = new_bal
+        BOT_STATE["equity"] = new_bal
+        BOT_STATE["daily_pnl"] = 0.0
+        BOT_STATE["daily_pnl_pct"] = 0.0
+        BOT_STATE["unrealized_pnl"] = 0.0
+        BOT_STATE["active_trades"] = 0
+        BOT_STATE["wins"] = 0
+        BOT_STATE["losses"] = 0
+        BOT_STATE["live_trades"] = []
+        risk_mgr.daily_pnl_usd = 0.0
+        risk_mgr.trading_halted = False
+        risk_mgr.halt_reason = ""
+        worker.log(f"Account balance reset to ${new_bal:,.2f}.")
+        return JsonResponse({"status": "success", "state": BOT_STATE})
+    return JsonResponse({"error": "POST method required"}, status=400)
+
+
+@csrf_exempt
+def api_manual_trade_view(request):
+    """Places an instant manual paper/demo trade for instant dynamic testing."""
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body) if request.body else {}
+            direction = data.get("direction", "CALL").upper()
+            stake = float(data.get("stake", 10.0))
+            duration_secs = int(data.get("duration", 60)) # Default 60 seconds for quick testing
+
+            res = worker.execute_manual_trade(direction=direction, stake=stake, duration_seconds=duration_secs)
+            return JsonResponse(res)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
+    return JsonResponse({"error": "POST method required"}, status=400)
+
 
 
 @csrf_exempt
@@ -205,5 +282,7 @@ def api_backtest_run_view(request):
             "candles": candles_series[-300:],
             "trades": trades_log[:25],
         })
+    except ConnectionError as e:
+        return JsonResponse({"error": "⚠️ Internet connection offline or slow. Unable to reach Deriv market feed."}, status=503)
     except Exception as e:
         return JsonResponse({"error": f"Backtest failed: {str(e)}"}, status=500)
