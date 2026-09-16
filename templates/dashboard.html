@@ -385,7 +385,15 @@
                     <button id="tabCandles" class="chart-tab-btn" onclick="switchChartTab('candles')">Candlesticks &
                         MAs</button>
                 </div>
+            <!-- Backtest Summary Metrics Strip -->
+            <div id="backtestStatsStrip" style="display: flex; gap: 16px; margin-bottom: 12px; background: rgba(15, 23, 42, 0.7); padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border-color); font-size: 0.8rem; overflow-x: auto; align-items: center; justify-content: space-between;">
+                <div>Total Trades: <span id="btTotalTrades" style="font-weight:700; color:#ffffff;">--</span></div>
+                <div>Win Rate: <span id="btWinRate" style="font-weight:700; color:#10b981;">--</span></div>
+                <div>Profit Factor: <span id="btProfitFactor" style="font-weight:700; color:#60a5fa;">--</span></div>
+                <div>Max Drawdown: <span id="btMaxDd" style="font-weight:700; color:#ef4444;">--</span></div>
+                <div>Net Strategy P&L: <span id="btNetPnl" style="font-weight:700; color:#10b981;">--</span></div>
             </div>
+
             <div class="chart-container" style="position: relative; height: 320px;">
                 <canvas id="equityChart" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
                 <div id="candleChartContainer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none;"></div>
@@ -856,8 +864,30 @@
         }
 
         function renderChartFromData(data) {
-            if (data.metrics && data.metrics.final_balance !== undefined) {
-                document.getElementById('metricBalance').innerText = `$${data.metrics.final_balance.toLocaleString()}`;
+            if (data.metrics) {
+                const m = data.metrics;
+                if (m.final_balance !== undefined) {
+                    document.getElementById('metricBalance').innerText = `$${m.final_balance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                }
+                const btTrades = document.getElementById('btTotalTrades');
+                if (btTrades) btTrades.innerText = m.total_trades !== undefined ? m.total_trades : '--';
+
+                const btWin = document.getElementById('btWinRate');
+                if (btWin) btWin.innerText = m.win_rate_pct !== undefined ? `${m.win_rate_pct.toFixed(1)}%` : '--';
+
+                const btPf = document.getElementById('btProfitFactor');
+                if (btPf) btPf.innerText = m.profit_factor !== undefined ? m.profit_factor.toFixed(2) : '--';
+
+                const btDd = document.getElementById('btMaxDd');
+                if (btDd) btDd.innerText = m.max_drawdown_pct !== undefined ? `${m.max_drawdown_pct.toFixed(1)}%` : '--';
+
+                const btNet = document.getElementById('btNetPnl');
+                if (btNet && m.net_pnl_pct !== undefined) {
+                    const netVal = m.net_pnl_pct;
+                    const sign = netVal >= 0 ? '+' : '';
+                    btNet.innerText = `${sign}${netVal.toFixed(2)}%`;
+                    btNet.style.color = netVal >= 0 ? '#10b981' : '#ef4444';
+                }
             }
 
             cachedCandlesData = data.candles || [];
