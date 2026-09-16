@@ -9,16 +9,47 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
     <style>
-        :root {
-            --bg-dark: #0f172a;
-            --card-bg: #1e293b;
-            --border-color: #334155;
+        :root, [data-theme="dark"] {
+            --bg-main: #0b0f19;
+            --card-bg: #151d2a;
+            --card-inner-bg: #0d1320;
+            --border-color: #263346;
             --accent-blue: #3b82f6;
             --accent-green: #10b981;
             --accent-red: #ef4444;
             --text-primary: #f8fafc;
             --text-secondary: #94a3b8;
+            --input-bg: #0d1320;
+            --table-header-bg: rgba(13, 19, 32, 0.65);
+            --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+            --badge-bg: rgba(59, 130, 246, 0.15);
+            --badge-text: #60a5fa;
+            --badge-border: rgba(59, 130, 246, 0.3);
+        }
+
+        [data-theme="light"] {
+            --bg-main: #f1f5f9;
+            --card-bg: #ffffff;
+            --card-inner-bg: #f8fafc;
+            --border-color: #cbd5e1;
+            --accent-blue: #2563eb;
+            --accent-green: #059669;
+            --accent-red: #dc2626;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --input-bg: #ffffff;
+            --table-header-bg: #f1f5f9;
+            --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
+            --badge-bg: rgba(37, 99, 235, 0.12);
+            --badge-text: #2563eb;
+            --badge-border: rgba(37, 99, 235, 0.25);
         }
 
         * {
@@ -26,6 +57,14 @@
             margin: 0;
             padding: 0;
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 24px;
         }
 
         .chart-header {
@@ -38,7 +77,7 @@
         .chart-tab-group {
             display: flex;
             gap: 4px;
-            background-color: #0f172a;
+            background-color: var(--input-bg);
             padding: 4px;
             border-radius: 8px;
             border: 1px solid var(--border-color);
@@ -53,19 +92,13 @@
             background: transparent;
             color: var(--text-secondary);
             border: none;
-            transition: all 0.2s;
+            transition: all 0.2s ease;
         }
 
         .chart-tab-btn.active {
             background-color: var(--accent-blue);
             color: white;
-        }
-
-        body {
-            background-color: var(--bg-dark);
-            color: var(--text-primary);
-            min-height: 100vh;
-            padding: 24px;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
         }
 
         header {
@@ -85,10 +118,32 @@
 
         .brand-title {
             font-size: 1.5rem;
-            font-weight: 700;
+            font-weight: 800;
+            letter-spacing: -0.02em;
             background: linear-gradient(135deg, #60a5fa, #3b82f6);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+        }
+
+        .theme-toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            background-color: var(--card-bg);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: var(--shadow-card);
+        }
+
+        .theme-toggle-btn:hover {
+            border-color: var(--accent-blue);
+            transform: translateY(-1px);
         }
 
         .status-badge {
@@ -123,17 +178,20 @@
             font-weight: 600;
             cursor: pointer;
             border: none;
-            transition: all 0.2s;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
         }
 
         .btn-toggle.start {
             background: linear-gradient(135deg, #10b981, #059669);
             color: white;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
         }
 
         .btn-toggle.stop {
             background: linear-gradient(135deg, #ef4444, #dc2626);
             color: white;
+            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35);
         }
 
         .grid-layout {
@@ -145,8 +203,9 @@
         .card {
             background-color: var(--card-bg);
             border: 1px solid var(--border-color);
-            border-radius: 12px;
+            border-radius: 14px;
             padding: 20px;
+            box-shadow: var(--shadow-card);
         }
 
         .form-group {
@@ -156,7 +215,7 @@
         label {
             display: block;
             font-size: 0.85rem;
-            font-weight: 500;
+            font-weight: 600;
             color: var(--text-secondary);
             margin-bottom: 6px;
         }
@@ -165,11 +224,18 @@
         input {
             width: 100%;
             padding: 10px 12px;
-            background-color: #0f172a;
+            background-color: var(--input-bg);
             border: 1px solid var(--border-color);
-            border-radius: 6px;
+            border-radius: 8px;
             color: var(--text-primary);
-            font-size: 0.95rem;
+            font-size: 0.92rem;
+            outline: none;
+        }
+
+        select:focus,
+        input:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
         }
 
         .checkbox-group {
@@ -193,7 +259,13 @@
             font-weight: 600;
             cursor: pointer;
             margin-top: 12px;
-            transition: opacity 0.2s;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
+        }
+
+        .btn-primary:hover {
+            opacity: 0.95;
+            transform: translateY(-1px);
         }
 
         .metrics-grid {
@@ -206,21 +278,24 @@
         .metric-card {
             background-color: var(--card-bg);
             border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 16px;
+            border-radius: 14px;
+            padding: 18px;
+            box-shadow: var(--shadow-card);
         }
 
         .metric-title {
-            font-size: 0.8rem;
+            font-size: 0.78rem;
             color: var(--text-secondary);
             text-transform: uppercase;
             letter-spacing: 0.05em;
+            font-weight: 600;
         }
 
         .metric-value {
-            font-size: 1.5rem;
-            font-weight: 700;
+            font-size: 1.55rem;
+            font-weight: 800;
             margin-top: 6px;
+            letter-spacing: -0.02em;
         }
 
         .chart-container {
@@ -244,7 +319,7 @@
         th {
             color: var(--text-secondary);
             font-weight: 600;
-            background-color: rgba(15, 23, 42, 0.4);
+            background-color: var(--table-header-bg);
         }
 
         .pnl-positive {
@@ -255,6 +330,16 @@
         .pnl-negative {
             color: var(--accent-red);
             font-weight: 600;
+        }
+
+        #logConsole {
+            background-color: var(--input-bg) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        #backtestStatsStrip {
+            background: var(--input-bg) !important;
+            border-color: var(--border-color) !important;
         }
     </style>
 </head>
@@ -274,7 +359,13 @@
                 <span class="dot" style="background-color: #10b981;" id="netDot"></span> <span id="netStatusText">ONLINE</span>
             </div>
         </div>
-        <button id="toggleBtn" class="btn-toggle start" onclick="toggleBot()">Start Trading Bot</button>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <button id="themeToggleBtn" onclick="toggleTheme()" class="theme-toggle-btn" title="Toggle Light / Dark Mode">
+                <span id="themeIcon">🌙</span>
+                <span id="themeText">Dark</span>
+            </button>
+            <button id="toggleBtn" class="btn-toggle start" onclick="toggleBot()">Start Trading Bot</button>
+        </div>
     </header>
 
     <div class="metrics-grid">
@@ -483,25 +574,86 @@
             }
         }
 
+        function getTheme() {
+            return document.documentElement.getAttribute('data-theme') || 'dark';
+        }
+
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('theme', theme);
+
+            const iconEl = document.getElementById('themeIcon');
+            const textEl = document.getElementById('themeText');
+            if (theme === 'light') {
+                if (iconEl) iconEl.innerText = '☀️';
+                if (textEl) textEl.innerText = 'Light';
+            } else {
+                if (iconEl) iconEl.innerText = '🌙';
+                if (textEl) textEl.innerText = 'Dark';
+            }
+
+            const isLight = theme === 'light';
+
+            // Update Lightweight Charts Theme
+            if (candleChart) {
+                candleChart.applyOptions({
+                    layout: {
+                        background: { color: isLight ? '#ffffff' : '#151d2a' },
+                        textColor: isLight ? '#475569' : '#94a3b8',
+                    },
+                    grid: {
+                        vertLines: { color: isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.04)' },
+                        horzLines: { color: isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.04)' },
+                    },
+                    rightPriceScale: { borderColor: isLight ? '#cbd5e1' : '#263346' },
+                    timeScale: { borderColor: isLight ? '#cbd5e1' : '#263346' }
+                });
+            }
+
+            // Update Chart.js Theme
+            if (chart && chart.options && chart.options.scales) {
+                if (chart.options.scales.x && chart.options.scales.x.grid) {
+                    chart.options.scales.x.grid.color = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.03)';
+                }
+                if (chart.options.scales.y && chart.options.scales.y.grid) {
+                    chart.options.scales.y.grid.color = isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.04)';
+                }
+                chart.update('none');
+            }
+        }
+
+        function toggleTheme() {
+            const current = getTheme();
+            const next = current === 'dark' ? 'light' : 'dark';
+            setTheme(next);
+        }
+
+        function initTheme() {
+            const saved = localStorage.getItem('theme') || 'dark';
+            setTheme(saved);
+        }
+
         function renderCandlestickChart() {
             const container = document.getElementById('candleChartContainer');
             if (!container) return;
 
+            const isLight = getTheme() === 'light';
+
             if (!candleChart) {
                 candleChart = LightweightCharts.createChart(container, {
                     layout: {
-                        background: { color: '#1e293b' },
-                        textColor: '#94a3b8',
+                        background: { color: isLight ? '#ffffff' : '#151d2a' },
+                        textColor: isLight ? '#475569' : '#94a3b8',
                     },
                     grid: {
-                        vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
-                        horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+                        vertLines: { color: isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.04)' },
+                        horzLines: { color: isLight ? 'rgba(0, 0, 0, 0.06)' : 'rgba(255, 255, 255, 0.04)' },
                     },
                     rightPriceScale: {
-                        borderColor: '#334155',
+                        borderColor: isLight ? '#cbd5e1' : '#263346',
                     },
                     timeScale: {
-                        borderColor: '#334155',
+                        borderColor: isLight ? '#cbd5e1' : '#263346',
                         timeVisible: true,
                         secondsVisible: false,
                     },
@@ -1227,6 +1379,7 @@
 
         // Initialize on load and start 3-second polling
         window.onload = () => {
+            initTheme();
             initChart([1000, 1000]);
             updateSymbolBadge();
             runBacktest();
