@@ -89,7 +89,7 @@ class TradingBotWorker:
 
                     if not signals.empty:
                         latest_row = signals.iloc[-1]
-                        current_candle_ts = latest_row["epoch"]
+                        current_candle_ts = latest_row.get("epoch", str(latest_row.name))
                         signal_val = latest_row.get("signal", 0)
                         price = float(latest_row.get("close", 0.0))
 

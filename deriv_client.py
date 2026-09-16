@@ -26,15 +26,20 @@ import websockets
 
 DERIV_WS_URL = "wss://ws.derivws.com/websockets/v3?app_id={app_id}"
 
-# Common Deriv synthetic index symbols (volatility indices)
+# Deriv market symbols (Synthetic Indices & Forex Currency Pairs)
 SYMBOLS = {
-    "volatility_10": "R_10",
-    "volatility_25": "R_25",
-    "volatility_50": "R_50",
-    "volatility_75": "R_75",
-    "volatility_100": "R_100",
-    "volatility_75_1s": "1HZ75V",
-    "volatility_100_1s": "1HZ100V",
+    "Volatility 10 Index": "R_10",
+    "Volatility 25 Index": "R_25",
+    "Volatility 50 Index": "R_50",
+    "Volatility 75 Index": "R_75",
+    "Volatility 100 Index": "R_100",
+    "Volatility 75 (1s) Index": "1HZ75V",
+    "Volatility 100 (1s) Index": "1HZ100V",
+    "EUR/USD": "frxEURUSD",
+    "GBP/USD": "frxGBPUSD",
+    "USD/JPY": "frxUSDJPY",
+    "AUD/USD": "frxAUDUSD",
+    "EUR/GBP": "frxEURGBP",
 }
 
 
@@ -91,9 +96,28 @@ async def fetch_candles(
     return df
 
 
+import time
+
+_CANDLE_CACHE = {}
+_CACHE_TTL_SECONDS = 30
+
+
 def fetch_candles_sync(*args, **kwargs) -> pd.DataFrame:
-    """Blocking convenience wrapper for use outside of async code (e.g. Django views)."""
-    return asyncio.run(fetch_candles(*args, **kwargs))
+    """Blocking convenience wrapper with 30s in-memory cache for ultra-fast UI response."""
+    symbol = kwargs.get("symbol", args[0] if len(args) > 0 else "R_75")
+    granularity = kwargs.get("granularity_seconds", args[1] if len(args) > 1 else 60)
+    count = kwargs.get("count", args[2] if len(args) > 2 else 600)
+
+    cache_key = (symbol, granularity, count)
+    now = time.time()
+    if cache_key in _CANDLE_CACHE:
+        cached_df, timestamp = _CANDLE_CACHE[cache_key]
+        if now - timestamp < _CACHE_TTL_SECONDS:
+            return cached_df.copy()
+
+    df = asyncio.run(fetch_candles(*args, **kwargs))
+    _CANDLE_CACHE[cache_key] = (df, now)
+    return df.copy()
 
 
 class DerivClient:

@@ -101,7 +101,7 @@ def api_backtest_run_view(request):
     fast_ma = int(request.GET.get("fast_ma", BOT_STATE["fast_ma"]))
     slow_ma = int(request.GET.get("slow_ma", BOT_STATE["slow_ma"]))
     use_htf = request.GET.get("use_htf", "false").lower() == "true"
-    count = int(request.GET.get("count", 3000))
+    count = int(request.GET.get("count", 600))
 
     try:
         df_base = fetch_candles_sync(symbol=symbol, granularity_seconds=60, count=count)

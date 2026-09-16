@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deriv Trading Bot — Control Dashboard</title>
+    <title>Wall street 5 Trading Bot</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
@@ -159,7 +160,8 @@
             margin-bottom: 6px;
         }
 
-        select, input {
+        select,
+        input {
             width: 100%;
             padding: 10px 12px;
             background-color: #0f172a;
@@ -231,7 +233,8 @@
             font-size: 0.88rem;
         }
 
-        th, td {
+        th,
+        td {
             padding: 12px;
             text-align: left;
             border-bottom: 1px solid var(--border-color);
@@ -243,15 +246,23 @@
             background-color: rgba(15, 23, 42, 0.4);
         }
 
-        .pnl-positive { color: var(--accent-green); font-weight: 600; }
-        .pnl-negative { color: var(--accent-red); font-weight: 600; }
+        .pnl-positive {
+            color: var(--accent-green);
+            font-weight: 600;
+        }
+
+        .pnl-negative {
+            color: var(--accent-red);
+            font-weight: 600;
+        }
     </style>
 </head>
+
 <body>
 
     <header>
         <div class="brand">
-            <div class="brand-title">Deriv MA Crossover Bot</div>
+            <div class="brand-title">Wall street 5 Trading Bot</div>
             <div id="statusBadge" class="status-badge">
                 <span class="dot"></span> <span id="statusText">STOPPED</span>
             </div>
@@ -283,10 +294,10 @@
         <div>
             <div class="card" style="margin-bottom: 24px;">
                 <h3 style="margin-bottom: 16px; font-size: 1.1rem;">Strategy Settings</h3>
-                
+
                 <div class="form-group">
-                    <label for="symbolSelect">Market Symbol</label>
-                    <select id="symbolSelect">
+                    <label for="symbolSelect">Market Symbol / Currency Pair</label>
+                    <select id="symbolSelect" onchange="onSymbolChange()">
                         {% for key, val in symbols.items %}
                         <option value="{{ val }}" {% if val == bot_state.symbol %}selected{% endif %}>{{ key }} ({{ val }})</option>
                         {% endfor %}
@@ -295,7 +306,7 @@
 
                 <div class="form-group">
                     <label for="tfSelect">Timeframe</label>
-                    <select id="tfSelect">
+                    <select id="tfSelect" onchange="onSymbolChange()">
                         <option value="1min">1 Minute</option>
                         <option value="5min" selected>5 Minutes</option>
                         <option value="15min">15 Minutes</option>
@@ -314,7 +325,7 @@
                 </div>
 
                 <div class="checkbox-group">
-                    <input type="checkbox" id="mtfCheck">
+                    <input type="checkbox" id="mtfCheck" onchange="onSymbolChange()">
                     <label for="mtfCheck" style="margin-bottom: 0;">Multi-Timeframe Filter (Option A)</label>
                 </div>
 
@@ -325,9 +336,11 @@
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                     <h3 style="font-size: 1.0rem;">Live Worker Console</h3>
-                    <span id="liveLastCheck" style="font-size: 0.75rem; color: var(--text-secondary);">Last check: --</span>
+                    <span id="liveLastCheck" style="font-size: 0.75rem; color: var(--text-secondary);">Last check:
+                        --</span>
                 </div>
-                <div id="logConsole" style="background-color: #090d16; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; font-family: monospace; font-size: 0.8rem; height: 160px; overflow-y: auto; color: #34d399;">
+                <div id="logConsole"
+                    style="background-color: #090d16; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; font-family: monospace; font-size: 0.8rem; height: 160px; overflow-y: auto; color: #34d399;">
                     <div class="log-line">[System] Ready to start background execution loop.</div>
                 </div>
             </div>
@@ -336,18 +349,27 @@
         <!-- Chart & Trade Log -->
         <div class="card">
             <div class="chart-header">
-                <h3 style="font-size: 1.1rem;">Visualizer</h3>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <h3 style="font-size: 1.1rem; margin: 0;">Visualizer</h3>
+                    <span id="activeSymbolBadge" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+                        <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #60a5fa;"></span>
+                        <span id="symbolBadgeText">--</span>
+                    </span>
+                </div>
                 <div class="chart-tab-group">
-                    <button id="tabEquity" class="chart-tab-btn active" onclick="switchChartTab('equity')">Equity Curve</button>
-                    <button id="tabCandles" class="chart-tab-btn" onclick="switchChartTab('candles')">Candlesticks & MAs</button>
+                    <button id="tabEquity" class="chart-tab-btn active" onclick="switchChartTab('equity')">Equity
+                        Curve</button>
+                    <button id="tabCandles" class="chart-tab-btn" onclick="switchChartTab('candles')">Candlesticks &
+                        MAs</button>
                 </div>
             </div>
-            <div class="chart-container" style="position: relative;">
-                <canvas id="equityChart"></canvas>
-                <div id="candleChartContainer" style="width: 100%; height: 100%; display: none;"></div>
+            <div class="chart-container" style="position: relative; height: 320px;">
+                <canvas id="equityChart" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
+                <div id="candleChartContainer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none;"></div>
             </div>
 
-            <h4 style="margin-top: 16px; margin-bottom: 12px; font-size: 0.95rem; color: var(--text-secondary);">Recent Executed Trades</h4>
+            <h4 style="margin-top: 16px; margin-bottom: 12px; font-size: 0.95rem; color: var(--text-secondary);">Recent
+                Executed Trades</h4>
             <div style="overflow-x: auto; max-height: 200px;">
                 <table>
                     <thead>
@@ -361,7 +383,10 @@
                         </tr>
                     </thead>
                     <tbody id="tradeLogBody">
-                        <tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">Run backtest or start bot to view trades.</td></tr>
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-secondary);">Run backtest or
+                                start bot to view trades.</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -605,52 +630,142 @@
             }
         }
 
-        async function runBacktest() {
+        const clientCache = {};
+
+        function renderChartFromData(data) {
+            document.getElementById('metricBalance').innerText = `$${data.metrics.final_balance.toLocaleString()}`;
+
+            cachedCandlesData = data.candles || [];
+            initChart(data.chart_equity);
+
+            const tbody = document.getElementById('tradeLogBody');
+            if (data.trades.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No trades generated.</td></tr>';
+            } else {
+                tbody.innerHTML = data.trades.map(t => `
+                    <tr>
+                        <td>${t.entry_time.split(' ')[0]}</td>
+                        <td style="color: ${t.direction === 'LONG' ? '#10b981' : '#ef4444'}; font-weight: 600;">${t.direction}</td>
+                        <td>${t.entry_price}</td>
+                        <td>${t.exit_price}</td>
+                        <td class="${t.pnl_pct >= 0 ? 'pnl-positive' : 'pnl-negative'}">${t.pnl_pct >= 0 ? '+' : ''}${t.pnl_pct}%</td>
+                        <td>$${t.balance_after.toLocaleString()}</td>
+                    </tr>
+                `).join('');
+            }
+
+            switchChartTab(currentTab);
+        }
+
+        function updateSymbolBadge(isLoading = false) {
+            const select = document.getElementById('symbolSelect');
+            if (select && select.selectedIndex >= 0) {
+                const label = select.options[select.selectedIndex].text;
+                const badge = document.getElementById('symbolBadgeText');
+                if (badge) {
+                    badge.innerText = isLoading ? `${label} (loading...)` : label;
+                }
+            }
+        }
+
+        function onSymbolChange() {
             const symbol = document.getElementById('symbolSelect').value;
             const tf = document.getElementById('tfSelect').value;
             const fast = document.getElementById('fastMa').value;
             const slow = document.getElementById('slowMa').value;
             const mtf = document.getElementById('mtfCheck').checked;
 
-            const url = `/api/backtest/?symbol=${symbol}&timeframe=${tf}&fast_ma=${fast}&slow_ma=${slow}&use_htf=${mtf}`;
-            const res = await fetch(url);
-            const data = await res.json();
+            fetch('/api/config/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    symbol: symbol,
+                    timeframe: tf,
+                    fast_ma: fast,
+                    slow_ma: slow,
+                    use_htf: mtf
+                })
+            }).catch(e => console.error("Config update error:", e));
 
-            if (data.status === 'success') {
-                document.getElementById('metricBalance').innerText = `$${data.metrics.final_balance.toLocaleString()}`;
+            runBacktest();
+        }
 
-                cachedCandlesData = data.candles || [];
-                initChart(data.chart_equity);
-
-                if (currentTab === 'candles') {
-                    renderCandlestickChart();
+        async function fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, isPrefetch) {
+            const url = `/api/backtest/?symbol=${symbol}&timeframe=${tf}&fast_ma=${fast}&slow_ma=${slow}&use_htf=${mtf}&count=500`;
+            try {
+                const res = await fetch(url);
+                const data = await res.json();
+                if (data.status === 'success') {
+                    clientCache[cacheKey] = data;
+                    const currentSelected = document.getElementById('symbolSelect').value;
+                    if (!isPrefetch && currentSelected === symbol) {
+                        renderChartFromData(data);
+                    }
                 }
-
-                const tbody = document.getElementById('tradeLogBody');
-                if (data.trades.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No trades generated.</td></tr>';
-                } else {
-                    tbody.innerHTML = data.trades.map(t => `
-                        <tr>
-                            <td>${t.entry_time.split(' ')[0]}</td>
-                            <td style="color: ${t.direction === 'LONG' ? '#10b981' : '#ef4444'}; font-weight: 600;">${t.direction}</td>
-                            <td>${t.entry_price}</td>
-                            <td>${t.exit_price}</td>
-                            <td class="${t.pnl_pct >= 0 ? 'pnl-positive' : 'pnl-negative'}">${t.pnl_pct >= 0 ? '+' : ''}${t.pnl_pct}%</td>
-                            <td>$${t.balance_after.toLocaleString()}</td>
-                        </tr>
-                    `).join('');
+            } catch(e) {
+                console.error("Backtest error:", e);
+            } finally {
+                if (!isPrefetch) {
+                    updateSymbolBadge(false);
                 }
             }
+        }
+
+        async function runBacktest(isPrefetch = false, targetSymbol = null) {
+            const symbol = targetSymbol || document.getElementById('symbolSelect').value;
+            const tf = document.getElementById('tfSelect').value;
+            const fast = document.getElementById('fastMa').value;
+            const slow = document.getElementById('slowMa').value;
+            const mtf = document.getElementById('mtfCheck').checked;
+
+            const cacheKey = `${symbol}_${tf}_${fast}_${slow}_${mtf}`;
+
+            // Check client cache for instantaneous (< 50ms) rendering
+            if (!isPrefetch && clientCache[cacheKey]) {
+                updateSymbolBadge(false);
+                renderChartFromData(clientCache[cacheKey]);
+                // Refresh in background silently
+                fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, false);
+                return;
+            }
+
+            if (!isPrefetch) {
+                updateSymbolBadge(true);
+            }
+
+            await fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, isPrefetch);
+        }
+
+        // Background pre-fetch for all currency options so clicking any option renders instantly
+        function prefetchOtherSymbols() {
+            const select = document.getElementById('symbolSelect');
+            if (!select) return;
+            const options = Array.from(select.options);
+            options.forEach((opt, index) => {
+                setTimeout(() => {
+                    const sym = opt.value;
+                    const tf = document.getElementById('tfSelect').value;
+                    const fast = document.getElementById('fastMa').value;
+                    const slow = document.getElementById('slowMa').value;
+                    const mtf = document.getElementById('mtfCheck').checked;
+                    const key = `${sym}_${tf}_${fast}_${slow}_${mtf}`;
+                    if (!clientCache[key]) {
+                        fetchBacktestData(sym, tf, fast, slow, mtf, key, true);
+                    }
+                }, (index + 1) * 200);
+            });
         }
 
         // Initialize on load and start 3-second polling
         window.onload = () => {
             initChart([1000, 1000]);
+            updateSymbolBadge();
             runBacktest();
             pollBotStatus();
             setInterval(pollBotStatus, 3000);
+            setTimeout(prefetchOtherSymbols, 500);
         };
     </script>
 </body>
+
 </html>
