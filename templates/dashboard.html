@@ -860,6 +860,68 @@
                     // ── Worker Console timestamp ──────────────────────────────
                     document.getElementById('liveLastCheck').innerText = `Checked: ${localTimeStr}`;
 
+                    // ── Dynamic Performance Stats Strip ─────────────────────────────
+                    const liveTradesList = state.live_trades || [];
+                    const totalSessionTrades = liveTradesList.length;
+                    const closedTrades = liveTradesList.filter(t => t.status === 'WON' || t.status === 'LOST' || t.status === 'DRAW');
+                    const wonTrades = liveTradesList.filter(t => t.status === 'WON');
+                    const lostTrades = liveTradesList.filter(t => t.status === 'LOST');
+
+                    const totalClosedCount = closedTrades.length;
+                    const liveWinRatePct = totalClosedCount > 0 ? ((wonTrades.length / totalClosedCount) * 100).toFixed(1) : '0.0';
+
+                    let grossProfit = 0.0;
+                    let grossLoss = 0.0;
+                    liveTradesList.forEach(t => {
+                        const pnl = t.pnl || 0.0;
+                        if (pnl > 0) grossProfit += pnl;
+                        else if (pnl < 0) grossLoss += Math.abs(pnl);
+                    });
+
+                    let profitFactorStr = '0.00';
+                    if (grossLoss > 0) {
+                        profitFactorStr = (grossProfit / grossLoss).toFixed(2);
+                    } else if (grossProfit > 0) {
+                        profitFactorStr = grossProfit.toFixed(2);
+                    }
+
+                    // Compute Max Drawdown from balance history
+                    let maxEquity = initialBal;
+                    let maxDrawdownPct = 0.0;
+                    liveTradesList.slice().reverse().forEach(t => {
+                        const b = typeof t.balance_after === 'number' ? t.balance_after : initialBal;
+                        if (b > maxEquity) maxEquity = b;
+                        const dd = maxEquity > 0 ? ((maxEquity - b) / maxEquity * 100) : 0.0;
+                        if (dd > maxDrawdownPct) maxDrawdownPct = dd;
+                    });
+
+                    const netPnlPctVal = typeof state.daily_pnl_pct === 'number' ? state.daily_pnl_pct : 0.0;
+                    const netSign = netPnlPctVal >= 0 ? '+' : '';
+
+                    const elTotal = document.getElementById('btTotalTrades');
+                    if (elTotal) elTotal.innerText = totalSessionTrades;
+
+                    const elWin = document.getElementById('btWinRate');
+                    if (elWin) elWin.innerText = `${liveWinRatePct}%`;
+
+                    const elPf = document.getElementById('btProfitFactor');
+                    if (elPf) elPf.innerText = profitFactorStr;
+
+                    const elDd = document.getElementById('btMaxDd');
+                    if (elDd) elDd.innerText = `${maxDrawdownPct.toFixed(1)}%`;
+
+                    const elNet = document.getElementById('btNetPnl');
+                    if (elNet) {
+                        elNet.innerText = `${netSign}${netPnlPctVal.toFixed(2)}%`;
+                        elNet.style.color = netPnlPctVal >= 0 ? '#10b981' : '#ef4444';
+                    }
+
+                    // Update live Equity Curve chart points if on equity tab
+                    if (currentTab === 'equity' && liveTradesList.length > 0) {
+                        const liveEquityCurve = [initialBal, ...liveTradesList.slice().reverse().map(t => typeof t.balance_after === 'number' ? t.balance_after : initialBal)];
+                        initChart(liveEquityCurve);
+                    }
+
                     // ── Log Console ───────────────────────────────────────────
                     const logConsole = document.getElementById('logConsole');
                     if (logConsole && state.logs && state.logs.length > 0) {
