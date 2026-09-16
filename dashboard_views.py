@@ -164,11 +164,11 @@ def api_reset_balance_view(request):
         BOT_STATE["active_trades"] = 0
         BOT_STATE["wins"] = 0
         BOT_STATE["losses"] = 0
-        BOT_STATE["live_trades"] = []
+        # Preserve live_trades history so executed trade records remain visible
         risk_mgr.daily_pnl_usd = 0.0
         risk_mgr.trading_halted = False
         risk_mgr.halt_reason = ""
-        worker.log(f"Account balance reset to ${new_bal:,.2f}.")
+        worker.log(f"Account balance reset to ${new_bal:,.2f}. Trade history preserved.")
         return JsonResponse({"status": "success", "state": BOT_STATE})
     return JsonResponse({"error": "POST method required"}, status=400)
 
