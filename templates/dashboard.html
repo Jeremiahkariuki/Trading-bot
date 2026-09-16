@@ -979,7 +979,7 @@
             await fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, isPrefetch);
         }
 
-        // Fast staggered background pre-fetch for all symbol options (< 50ms intervals)
+        // Smooth staggered background pre-fetch for all symbol options
         function prefetchOtherSymbols() {
             const select = document.getElementById('symbolSelect');
             if (!select) return;
@@ -995,7 +995,7 @@
                     if (!clientCache[key]) {
                         fetchBacktestData(sym, tf, fast, slow, mtf, key, true);
                     }
-                }, index * 40); // 40ms fast interval
+                }, (index + 1) * 200); // 200ms smooth interval
             });
         }
 

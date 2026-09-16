@@ -68,20 +68,31 @@ async def fetch_candles(
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
 
-    try:
-        async with websockets.connect(url, ssl=ssl_context, timeout=8) as ws:
-            await ws.send(json.dumps(request))
-            raw_resp = await asyncio.wait_for(ws.recv(), timeout=8)
-            response = json.loads(raw_resp)
-    except Exception as e:
-        raise ConnectionError(f"Deriv API connection failed: {str(e)}")
+    response = None
+    last_err = None
+
+    for attempt in range(2):
+        try:
+            async with websockets.connect(url, ssl=ssl_context) as ws:
+                await ws.send(json.dumps(request))
+                raw_resp = await asyncio.wait_for(ws.recv(), timeout=8)
+                response = json.loads(raw_resp)
+                break
+        except Exception as e:
+            last_err = e
+            if attempt == 0:
+                await asyncio.sleep(0.3)
+                continue
+
+    if response is None:
+        raise RuntimeError(f"Deriv WS connection failed for {symbol}: {str(last_err)}")
 
     if "error" in response:
-        raise RuntimeError(f"Deriv API error: {response['error'].get('message')}")
+        raise RuntimeError(f"Deriv API error for {symbol}: {response['error'].get('message')}")
 
     candles = response.get("candles", [])
     if not candles:
-        raise RuntimeError("No candle data returned - check symbol/granularity/count.")
+        raise RuntimeError(f"No candle data returned for {symbol}.")
 
     df = pd.DataFrame(candles)
     df["epoch"] = pd.to_datetime(df["epoch"], unit="s", utc=True)

@@ -282,7 +282,5 @@ def api_backtest_run_view(request):
             "candles": candles_series[-300:],
             "trades": trades_log[:25],
         })
-    except ConnectionError as e:
-        return JsonResponse({"error": "⚠️ Internet connection offline or slow. Unable to reach Deriv market feed."}, status=503)
     except Exception as e:
-        return JsonResponse({"error": f"Backtest failed: {str(e)}"}, status=500)
+        return JsonResponse({"error": f"Backtest data unavailable: {str(e)}"}, status=400)
