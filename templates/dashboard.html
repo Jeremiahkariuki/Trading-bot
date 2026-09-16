@@ -601,10 +601,30 @@
                     const state = data.state;
                     updateStatusUI(state.running);
 
-                    document.getElementById('liveSignal').innerText = state.last_signal || 'HOLD';
-                    document.getElementById('liveLastCheck').innerText = state.last_check_time ? `Checked: ${state.last_check_time.split(' ')[1]}` : 'Last check: --';
+                    const bal = typeof state.balance === 'number' ? state.balance : parseFloat(state.balance || 1000);
+                    document.getElementById('metricBalance').innerText = `$${bal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+                    const sigEl = document.getElementById('liveSignal');
+                    const signalText = state.last_signal || 'HOLD';
+                    sigEl.innerText = signalText;
+                    if (signalText.includes('BUY')) {
+                        sigEl.style.color = '#10b981';
+                    } else if (signalText.includes('SELL')) {
+                        sigEl.style.color = '#ef4444';
+                    } else {
+                        sigEl.style.color = '#60a5fa';
+                    }
+
                     document.getElementById('liveActiveTrades').innerText = state.active_trades || 0;
-                    document.getElementById('metricBalance').innerText = `$${state.balance.toLocaleString()}`;
+
+                    const modeEl = document.getElementById('tradingMode');
+                    if (modeEl) {
+                        const modeText = state.mode || 'PAPER';
+                        modeEl.innerText = modeText;
+                        modeEl.style.color = modeText === 'REAL' ? '#ef4444' : '#10b981';
+                    }
+
+                    document.getElementById('liveLastCheck').innerText = state.last_check_time ? `Checked: ${state.last_check_time.split(' ')[1]}` : 'Last check: --';
 
                     const logConsole = document.getElementById('logConsole');
                     if (logConsole && state.logs && state.logs.length > 0) {
@@ -621,7 +641,7 @@
                                 <td>${t.price}</td>
                                 <td>${t.contract_id}</td>
                                 <td class="pnl-positive">$${t.stake} (${t.mode})</td>
-                                <td>$${state.balance.toLocaleString()}</td>
+                                <td>$${bal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                             </tr>
                         `).join('');
                     }

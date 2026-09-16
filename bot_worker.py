@@ -74,6 +74,7 @@ class TradingBotWorker:
                 use_htf = bool(self.bot_state.get("use_htf", False))
 
                 df_base = fetch_candles_sync(symbol=symbol, granularity_seconds=60, count=300)
+                self.bot_state["last_check_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                 if df_base is not None and not df_base.empty:
                     df_tf = resample_candles(df_base, timeframe) if timeframe != "1min" else df_base
@@ -95,7 +96,6 @@ class TradingBotWorker:
 
                         signal_text = "BUY (CALL)" if signal_val == 1 else ("SELL (PUT)" if signal_val == -1 else "HOLD")
                         self.bot_state["last_signal"] = signal_text
-                        self.bot_state["last_check_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                         if current_candle_ts != self.last_candle_timestamp and signal_val in [1, -1]:
                             self.last_candle_timestamp = current_candle_ts
