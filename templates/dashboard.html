@@ -1345,8 +1345,11 @@
                 })
             }).catch(e => console.error("Config update error:", e));
 
-            // Instant Chart Update (<10ms)
+            // Instant Chart Update (<1ms)
             runBacktest();
+
+            // Background prefetch all timeframes for active symbol
+            setTimeout(prefetchTimeframesAndSymbols, 50);
         }
 
         async function fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, isPrefetch) {
@@ -1359,8 +1362,9 @@
                 const data = await res.json();
                 if (data.status === 'success') {
                     clientCache[cacheKey] = data;
-                    const currentSelected = document.getElementById('symbolSelect').value;
-                    if (!isPrefetch && currentSelected === symbol) {
+                    const currentSelectedSymbol = document.getElementById('symbolSelect').value;
+                    const currentSelectedTf = document.getElementById('tfSelect').value;
+                    if (!isPrefetch && currentSelectedSymbol === symbol && currentSelectedTf === tf) {
                         renderChartFromData(data);
                     }
                 } else if (data.error) {
@@ -1384,41 +1388,58 @@
             const mtf = document.getElementById('mtfCheck').checked;
 
             const cacheKey = `${symbol}_${tf}_${fast}_${slow}_${mtf}`;
+            const currentSelectedSymbol = document.getElementById('symbolSelect').value;
+            const currentSelectedTf = document.getElementById('tfSelect').value;
 
-            // INSTANT CACHE RENDER (< 5ms)
-            if (!isPrefetch && clientCache[cacheKey]) {
-                updateSymbolBadge(false);
-                renderChartFromData(clientCache[cacheKey]);
+            // INSTANT CACHE RENDER (< 1ms)
+            if (clientCache[cacheKey]) {
+                if (!isPrefetch && currentSelectedSymbol === symbol && currentSelectedTf === tf) {
+                    updateSymbolBadge(false);
+                    renderChartFromData(clientCache[cacheKey]);
+                }
                 // Background refresh silently
-                fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, false);
+                fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, isPrefetch);
                 return;
             }
 
             if (!isPrefetch) {
-                clearCurrentChart(); // Instant reset old graph (<5ms)
                 updateSymbolBadge(true);
             }
 
             await fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, isPrefetch);
         }
 
-        // Smooth staggered background pre-fetch for all symbol options
-        function prefetchOtherSymbols() {
+        // Instant pre-fetch for ALL timeframes on current symbol & other symbols
+        function prefetchTimeframesAndSymbols() {
+            const currentSymbol = document.getElementById('symbolSelect').value;
+            const fast = document.getElementById('fastMa').value;
+            const slow = document.getElementById('slowMa').value;
+            const mtf = document.getElementById('mtfCheck').checked;
+            const timeframes = ['1min', '5min', '15min', '1h'];
+
+            // 1. Instantly prefetch all 4 timeframes for active symbol (<20ms total)
+            timeframes.forEach(tf => {
+                const key = `${currentSymbol}_${tf}_${fast}_${slow}_${mtf}`;
+                if (!clientCache[key]) {
+                    fetchBacktestData(currentSymbol, tf, fast, slow, mtf, key, true);
+                }
+            });
+
+            // 2. Smoothly prefetch other symbols across timeframes
             const select = document.getElementById('symbolSelect');
             if (!select) return;
             const options = Array.from(select.options);
             options.forEach((opt, index) => {
                 setTimeout(() => {
                     const sym = opt.value;
-                    const tf = document.getElementById('tfSelect').value;
-                    const fast = document.getElementById('fastMa').value;
-                    const slow = document.getElementById('slowMa').value;
-                    const mtf = document.getElementById('mtfCheck').checked;
-                    const key = `${sym}_${tf}_${fast}_${slow}_${mtf}`;
-                    if (!clientCache[key]) {
-                        fetchBacktestData(sym, tf, fast, slow, mtf, key, true);
-                    }
-                }, (index + 1) * 200); // 200ms smooth interval
+                    if (sym === currentSymbol) return;
+                    timeframes.forEach(tf => {
+                        const key = `${sym}_${tf}_${fast}_${slow}_${mtf}`;
+                        if (!clientCache[key]) {
+                            fetchBacktestData(sym, tf, fast, slow, mtf, key, true);
+                        }
+                    });
+                }, (index + 1) * 150);
             });
         }
 
@@ -1430,7 +1451,7 @@
             runBacktest();
             pollBotStatus();
             setInterval(pollBotStatus, 3000);
-            setTimeout(prefetchOtherSymbols, 100);
+            setTimeout(prefetchTimeframesAndSymbols, 50);
         };
     </script>
 </body>

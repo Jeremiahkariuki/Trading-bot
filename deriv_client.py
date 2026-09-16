@@ -109,28 +109,32 @@ _CACHE_TTL_SECONDS = 120
 
 
 def fetch_candles_sync(*args, **kwargs) -> pd.DataFrame:
-    """Blocking convenience wrapper with 30s in-memory cache and offline fallback."""
+    """Blocking convenience wrapper with 120s in-memory cache and instant fallback."""
     symbol = kwargs.get("symbol", args[0] if len(args) > 0 else "R_75")
     granularity = kwargs.get("granularity_seconds", args[1] if len(args) > 1 else 60)
-    count = kwargs.get("count", args[2] if len(args) > 2 else 600)
+    count = kwargs.get("count", args[2] if len(args) > 2 else 500)
 
-    cache_key = (symbol, granularity, count)
+    cache_key = (symbol, granularity)
     now = time.time()
     if cache_key in _CANDLE_CACHE:
         cached_df, timestamp = _CANDLE_CACHE[cache_key]
-        if now - timestamp < _CACHE_TTL_SECONDS:
+        if now - timestamp < _CACHE_TTL_SECONDS and len(cached_df) >= 10:
             return cached_df.copy()
 
     try:
-        df = asyncio.run(fetch_candles(*args, **kwargs))
-        _CANDLE_CACHE[cache_key] = (df, now)
-        return df.copy()
-    except (ConnectionError, OSError, TimeoutError, asyncio.TimeoutError) as e:
-        # If offline or slow connection, fall back to cached data if available
+        df = asyncio.run(fetch_candles(symbol=symbol, granularity_seconds=granularity, count=count))
+        if df is not None and not df.empty:
+            _CANDLE_CACHE[cache_key] = (df, now)
+            return df.copy()
+    except Exception as e:
         if cache_key in _CANDLE_CACHE:
             cached_df, _ = _CANDLE_CACHE[cache_key]
             return cached_df.copy()
         raise ConnectionError(f"Network connection offline: {str(e)}")
+
+    if cache_key in _CANDLE_CACHE:
+        return _CANDLE_CACHE[cache_key][0].copy()
+    raise RuntimeError(f"No candle data available for {symbol}.")
 
 
 
