@@ -290,7 +290,8 @@ class TradingBotWorker:
                             if not can_trade:
                                 self.log(f"Signal {signal_text} ignored: {reason}")
                             else:
-                                self.log(f"Signal confirmed: {signal_text} on {symbol} @ {price:.4f}. Executing order (Stake: ${stake:.2f})...")
+                                prec_str = f"{price:.5f}" if ("frx" in symbol or "/" in symbol) else f"{price:.4f}"
+                                self.log(f"Signal confirmed: {signal_text} on {symbol} @ {prec_str}. Executing order (Stake: ${stake:.2f})...")
 
                                 trade_result = asyncio.run(
                                     self.client.execute_trade(

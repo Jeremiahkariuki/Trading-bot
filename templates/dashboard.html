@@ -514,6 +514,7 @@
                             <th>Time</th>
                             <th>Symbol</th>
                             <th>Side</th>
+                            <th>Stake (Invested)</th>
                             <th>Entry Price</th>
                             <th>Current / Exit</th>
                             <th>Status</th>
@@ -523,7 +524,7 @@
                     </thead>
                     <tbody id="tradeLogBody">
                         <tr>
-                            <td colspan="8" style="text-align: center; color: var(--text-secondary);">No active trades yet. Start bot or place demo trade above.</td>
+                            <td colspan="9" style="text-align: center; color: var(--text-secondary);">No active trades yet. Start bot or place demo trade above.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -1257,15 +1258,20 @@
                                     pnlText = `<span style="color:#94a3b8;">$0.00</span>`;
                                 }
 
-                                const exitPriceText = t.exit_price ? (typeof t.exit_price === 'number' ? t.exit_price.toFixed(4) : t.exit_price) : (t.current_price ? (typeof t.current_price === 'number' ? t.current_price.toFixed(4) : t.current_price) : '--');
+                                const isFrx = (t.symbol || state.symbol || '').includes('frx') || (t.symbol || state.symbol || '').includes('/');
+                                const prec = isFrx ? 5 : 4;
+                                const entryPriceText = typeof t.price === 'number' ? t.price.toFixed(prec) : t.price;
+                                const exitPriceText = t.exit_price ? (typeof t.exit_price === 'number' ? t.exit_price.toFixed(prec) : t.exit_price) : (t.current_price ? (typeof t.current_price === 'number' ? t.current_price.toFixed(prec) : t.current_price) : '--');
                                 const balAfterText = typeof t.balance_after === 'number' ? `$${t.balance_after.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : `$${equity.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                                const stakeText = `$${(t.stake || 10.0).toFixed(2)}`;
 
                                 return `
                                     <tr>
                                         <td>${t.time}</td>
                                         <td>${t.symbol || state.symbol}</td>
                                         <td style="color: ${t.type === 'CALL' ? '#10b981' : '#ef4444'}; font-weight: 700;">${t.type}</td>
-                                        <td>${typeof t.price === 'number' ? t.price.toFixed(4) : t.price}</td>
+                                        <td style="font-weight: 700; color: #ffffff;">${stakeText}</td>
+                                        <td>${entryPriceText}</td>
                                         <td>${exitPriceText}</td>
                                         <td>${statusBadge}</td>
                                         <td>${pnlText}</td>
@@ -1274,7 +1280,7 @@
                                 `;
                             }).join('');
                         } else {
-                            tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">No active trades yet. Start bot or place demo trade above.</td></tr>`;
+                            tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-secondary);">No active trades yet. Start bot or place demo trade above.</td></tr>`;
                         }
                     }
                 }
