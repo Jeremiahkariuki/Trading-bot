@@ -103,12 +103,10 @@ class TradingBotWorker:
                     elapsed = 999
 
                 if latest_price and latest_price > 0 and entry_price > 0:
-                    if contract_type == "CALL":
-                        is_itm = latest_price > entry_price
-                    else:
-                        is_itm = latest_price < entry_price
-
-                    if is_itm:
+                    if latest_price == entry_price:
+                        unrealized = 0.0
+                        floating_payout = stake
+                    elif (contract_type == "CALL" and latest_price > entry_price) or (contract_type == "PUT" and latest_price < entry_price):
                         unrealized = round(stake * 0.95, 2)
                         floating_payout = round(stake * 1.95, 2)
                     else:
