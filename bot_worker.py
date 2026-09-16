@@ -187,12 +187,17 @@ class TradingBotWorker:
         """
         Executes a manual test trade instantly so the user can test floating P&L and dynamic balance updates.
         """
+        stake = float(stake)
+        current_bal = self.bot_state.get("balance", 1000.0)
+        can_trade, reason = self.risk_mgr.can_open_trade(current_bal, stake=stake)
+        if not can_trade:
+            return {"error": reason}
+
         symbol = self.bot_state.get("symbol", "R_75")
         df_base = fetch_candles_sync(symbol=symbol, granularity_seconds=60, count=2)
         entry_price = float(df_base.iloc[-1].get("close", 1000.0)) if (df_base is not None and not df_base.empty) else 1000.0
 
         # Deduct stake from cash balance immediately upon order placement
-        current_bal = self.bot_state.get("balance", 1000.0)
         self.bot_state["balance"] = round(current_bal - stake, 2)
 
         contract_id = f"DEMO_{int(time.time() * 1000)}"
@@ -273,15 +278,15 @@ class TradingBotWorker:
                         if current_candle_ts != self.last_candle_timestamp and signal_val in [1, -1]:
                             self.last_candle_timestamp = current_candle_ts
 
-                            can_trade, reason = self.risk_mgr.can_open_trade(self.bot_state["balance"])
+                            contract_type = "CALL" if signal_val == 1 else "PUT"
+                            stake = round(self.bot_state["balance"] * 0.01, 2)
+                            if stake < 1.0:
+                                stake = 1.0
+
+                            can_trade, reason = self.risk_mgr.can_open_trade(self.bot_state["balance"], stake=stake)
                             if not can_trade:
                                 self.log(f"Signal {signal_text} ignored: {reason}")
                             else:
-                                contract_type = "CALL" if signal_val == 1 else "PUT"
-                                stake = round(self.bot_state["balance"] * 0.01, 2)
-                                if stake < 1.0:
-                                    stake = 1.0
-
                                 self.log(f"Signal confirmed: {signal_text} on {symbol} @ {price:.4f}. Executing order (Stake: ${stake:.2f})...")
 
                                 trade_result = asyncio.run(

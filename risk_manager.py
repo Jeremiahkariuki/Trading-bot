@@ -46,11 +46,17 @@ class RiskManager:
             self.trading_halted = False
             self.halt_reason = ""
 
-    def can_open_trade(self, current_balance: float) -> Tuple[bool, str]:
+    def can_open_trade(self, current_balance: float, stake: float = 10.0) -> Tuple[bool, str]:
         """
         Evaluates whether a new trade is permitted under safety risk rules.
         """
         self._update_day(current_balance)
+
+        # 0. Enforce positive balance and sufficient stake
+        if current_balance <= 0:
+            return False, f"Insufficient balance (${current_balance:.2f}). Account balance must be greater than $0.00."
+        if current_balance < stake:
+            return False, f"Insufficient balance (${current_balance:.2f}) for required trade stake (${stake:.2f})."
 
         if self.trading_halted:
             return False, f"Trading halted for today: {self.halt_reason}"
