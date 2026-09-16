@@ -719,6 +719,20 @@
                 candleChart.applyOptions({ width: w, height: h });
             }
 
+            const symbolSelect = document.getElementById('symbolSelect');
+            const symVal = symbolSelect ? symbolSelect.value : '';
+            const isForex = symVal.includes('frx') || symVal.includes('/');
+
+            if (candlestickSeries) {
+                candlestickSeries.applyOptions({
+                    priceFormat: {
+                        type: 'price',
+                        precision: isForex ? 5 : 2,
+                        minMove: isForex ? 0.00001 : 0.01,
+                    }
+                });
+            }
+
             if (fastMaSeries && fastInput) fastMaSeries.applyOptions({ title: `Fast EMA (${fastInput.value})` });
             if (slowMaSeries && slowInput) slowMaSeries.applyOptions({ title: `Slow EMA (${slowInput.value})` });
 

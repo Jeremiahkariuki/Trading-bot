@@ -244,14 +244,15 @@ def api_backtest_run_view(request):
 
         chart_data = [round(v, 2) for v in eq_series]
 
+        precision = 5 if ("frx" in str(symbol) or "/" in str(symbol)) else 4
         trades_log = []
         for t in results.get("trades", []):
             trades_log.append({
                 "entry_time": str(t.entry_time),
                 "exit_time": str(t.exit_time),
                 "direction": "LONG" if t.direction == 1 else "SHORT",
-                "entry_price": round(t.entry_price, 4),
-                "exit_price": round(t.exit_price, 4),
+                "entry_price": round(t.entry_price, precision),
+                "exit_price": round(t.exit_price, precision),
                 "pnl_pct": round(t.pnl_pct, 2),
                 "balance_after": round(t.balance_after, 2),
             })
@@ -271,15 +272,15 @@ def api_backtest_run_view(request):
 
             candle_obj = {
                 "time": time_val,
-                "open": round(float(row["open"]), 4),
-                "high": round(float(row["high"]), 4),
-                "low": round(float(row["low"]), 4),
-                "close": round(float(row["close"]), 4),
+                "open": round(float(row["open"]), precision),
+                "high": round(float(row["high"]), precision),
+                "low": round(float(row["low"]), precision),
+                "close": round(float(row["close"]), precision),
             }
             if "fast_ma" in row and not pd.isna(row["fast_ma"]):
-                candle_obj["fast_ma"] = round(float(row["fast_ma"]), 4)
+                candle_obj["fast_ma"] = round(float(row["fast_ma"]), precision)
             if "slow_ma" in row and not pd.isna(row["slow_ma"]):
-                candle_obj["slow_ma"] = round(float(row["slow_ma"]), 4)
+                candle_obj["slow_ma"] = round(float(row["slow_ma"]), precision)
             if "signal" in row and row["signal"] in [1, -1]:
                 candle_obj["signal"] = int(row["signal"])
             candles_series.append(candle_obj)
