@@ -34,7 +34,7 @@ BOT_STATE = {
     "active_trades": 0,
     "wins": 0,
     "losses": 0,
-    "mode": "PAPER",
+    "mode": "DEMO",
     "api_token": "",
     "logs": [],
     "live_trades": [],

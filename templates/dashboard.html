@@ -298,8 +298,8 @@
         </div>
         <div class="metric-card">
             <div class="metric-title">Trading Mode</div>
-            <div id="tradingMode" class="metric-value" style="color: #10b981;">PAPER</div>
-            <div id="tradingModeDetail" style="font-size:0.78rem; margin-top:6px; color: var(--text-secondary);">Simulated orders</div>
+            <div id="tradingMode" class="metric-value" style="color: #10b981;">DEMO</div>
+            <div id="tradingModeDetail" style="font-size:0.78rem; margin-top:6px; color: var(--text-secondary);">Simulated demo orders</div>
         </div>
     </div>
 
@@ -781,13 +781,15 @@
                     // ── Trading Mode + description ───────────────────────────
                     const modeEl = document.getElementById('tradingMode');
                     const modeDetailEl = document.getElementById('tradingModeDetail');
-                    const modeText = state.mode || 'PAPER';
+                    const rawMode = (state.mode || 'DEMO').toUpperCase();
+                    const isLive = rawMode === 'REAL' || rawMode === 'LIVE';
+                    const modeText = isLive ? 'LIVE' : 'DEMO';
                     if (modeEl) {
                         modeEl.innerText = modeText;
-                        modeEl.style.color = modeText === 'REAL' ? '#ef4444' : '#10b981';
+                        modeEl.style.color = isLive ? '#ef4444' : '#10b981';
                     }
                     if (modeDetailEl) {
-                        modeDetailEl.innerText = modeText === 'REAL' ? 'Live real orders' : 'Simulated orders';
+                        modeDetailEl.innerText = isLive ? 'Live real money orders' : 'Simulated demo orders';
                     }
 
                     // ── Worker Console timestamp ──────────────────────────────

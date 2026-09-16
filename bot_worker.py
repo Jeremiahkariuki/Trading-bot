@@ -35,7 +35,7 @@ class TradingBotWorker:
         self.bot_state["network_error_msg"] = ""
         self.client = DerivLiveClient(
             api_token=bot_state.get("api_token", ""),
-            paper_mode=(bot_state.get("mode", "PAPER") == "PAPER"),
+            paper_mode=(bot_state.get("mode", "DEMO").upper() in ["DEMO", "PAPER"]),
         )
 
     def log(self, message: str):
@@ -204,7 +204,7 @@ class TradingBotWorker:
             "price": entry_price,
             "stake": stake,
             "duration_seconds": duration_seconds,
-            "mode": self.bot_state.get("mode", "PAPER"),
+            "mode": self.bot_state.get("mode", "DEMO"),
             "status": "OPEN",
             "current_price": entry_price,
             "unrealized_pnl": -stake,
@@ -224,7 +224,7 @@ class TradingBotWorker:
         }
 
     def _run_loop(self):
-        self.client.paper_mode = (self.bot_state.get("mode", "PAPER") == "PAPER")
+        self.client.paper_mode = (self.bot_state.get("mode", "DEMO").upper() in ["DEMO", "PAPER"])
         self.client.api_token = self.bot_state.get("api_token", "")
 
         while not self._stop_event.is_set() and self.bot_state.get("running", False):
@@ -307,7 +307,7 @@ class TradingBotWorker:
                                     "price": price,
                                     "stake": stake,
                                     "duration_seconds": 120, # 2 minutes duration
-                                    "mode": trade_result.get("mode", "PAPER"),
+                                    "mode": trade_result.get("mode", "DEMO"),
                                     "status": "OPEN",
                                     "current_price": price,
                                     "unrealized_pnl": -stake,
