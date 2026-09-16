@@ -759,9 +759,10 @@
                     } else {
                         sigEl.style.color = '#60a5fa';
                     }
+                    const localTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
                     const sigTimeEl = document.getElementById('signalTime');
-                    if (sigTimeEl && state.last_check_time) {
-                        sigTimeEl.innerText = `At: ${state.last_check_time.split(' ')[1] || '--'}`;
+                    if (sigTimeEl) {
+                        sigTimeEl.innerText = `At: ${localTimeStr}`;
                     }
 
                     // ── Active Trades & Stats ─────────────────────────────────
@@ -790,7 +791,7 @@
                     }
 
                     // ── Worker Console timestamp ──────────────────────────────
-                    document.getElementById('liveLastCheck').innerText = state.last_check_time ? `Checked: ${state.last_check_time.split(' ')[1]}` : 'Last check: --';
+                    document.getElementById('liveLastCheck').innerText = `Checked: ${localTimeStr}`;
 
                     // ── Log Console ───────────────────────────────────────────
                     const logConsole = document.getElementById('logConsole');
