@@ -380,10 +380,8 @@
                     </span>
                 </div>
                 <div class="chart-tab-group">
-                    <button id="tabEquity" class="chart-tab-btn active" onclick="switchChartTab('equity')">Equity
-                        Curve</button>
-                    <button id="tabCandles" class="chart-tab-btn" onclick="switchChartTab('candles')">Candlesticks &
-                        MAs</button>
+                    <button id="tabCandles" class="chart-tab-btn active" onclick="switchChartTab('candles')">Candlesticks & MAs</button>
+                    <button id="tabEquity" class="chart-tab-btn" onclick="switchChartTab('equity')">Equity Curve</button>
                 </div>
             </div>
 
@@ -397,8 +395,8 @@
             </div>
 
             <div class="chart-container" style="position: relative; height: 320px;">
-                <canvas id="equityChart" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
-                <div id="candleChartContainer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none;"></div>
+                <div id="candleChartContainer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block;"></div>
+                <canvas id="equityChart" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none;"></canvas>
             </div>
 
             <h4 style="margin-top: 16px; margin-bottom: 12px; font-size: 0.95rem; color: var(--text-secondary);">Recent
@@ -433,13 +431,13 @@
         let candlestickSeries = null;
         let fastMaSeries = null;
         let slowMaSeries = null;
-        let currentTab = 'equity';
+        let currentTab = 'candles';
         let cachedCandlesData = [];
 
         function switchChartTab(tab) {
             currentTab = tab;
-            document.getElementById('tabEquity').className = tab === 'equity' ? 'chart-tab-btn active' : 'chart-tab-btn';
             document.getElementById('tabCandles').className = tab === 'candles' ? 'chart-tab-btn active' : 'chart-tab-btn';
+            document.getElementById('tabEquity').className = tab === 'equity' ? 'chart-tab-btn active' : 'chart-tab-btn';
 
             const canvas = document.getElementById('equityChart');
             const container = document.getElementById('candleChartContainer');
