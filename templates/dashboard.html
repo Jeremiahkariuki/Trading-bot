@@ -638,9 +638,13 @@
             if (!container) return;
 
             const isLight = getTheme() === 'light';
+            const w = container.clientWidth || container.offsetWidth || (container.parentElement ? container.parentElement.clientWidth : 600);
+            const h = container.clientHeight || container.offsetHeight || 320;
 
             if (!candleChart) {
                 candleChart = LightweightCharts.createChart(container, {
+                    width: w,
+                    height: h,
                     layout: {
                         background: { color: isLight ? '#ffffff' : '#151d2a' },
                         textColor: isLight ? '#475569' : '#94a3b8',
@@ -681,12 +685,13 @@
 
                 window.addEventListener('resize', () => {
                     if (candleChart && container) {
-                        candleChart.applyOptions({
-                            width: container.clientWidth,
-                            height: container.clientHeight
-                        });
+                        const rw = container.clientWidth || 600;
+                        const rh = container.clientHeight || 320;
+                        candleChart.applyOptions({ width: rw, height: rh });
                     }
                 });
+            } else {
+                candleChart.applyOptions({ width: w, height: h });
             }
 
             if (cachedCandlesData && cachedCandlesData.length > 0) {
@@ -748,9 +753,14 @@
                 candleChart.timeScale().fitContent();
             }
 
-            candleChart.applyOptions({
-                width: container.clientWidth,
-                height: container.clientHeight
+            requestAnimationFrame(() => {
+                if (candleChart && container) {
+                    const finalW = container.clientWidth || 600;
+                    const finalH = container.clientHeight || 320;
+                    if (finalW > 0 && finalH > 0) {
+                        candleChart.applyOptions({ width: finalW, height: finalH });
+                    }
+                }
             });
         }
 
