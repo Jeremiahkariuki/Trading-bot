@@ -1242,9 +1242,10 @@
                                 if (status === 'OPEN') {
                                     const un = t.unrealized_pnl || 0.0;
                                     const unSign = un >= 0 ? '+' : '';
-                                    const pnlColor = un >= 0 ? '#10b981' : '#ef4444';
+                                    const pnlColor = un > 0 ? '#10b981' : (un < 0 ? '#ef4444' : '#60a5fa');
+                                    const diffPct = typeof t.price_diff_pct === 'number' ? (t.price_diff_pct >= 0 ? `+${t.price_diff_pct.toFixed(3)}%` : `${t.price_diff_pct.toFixed(3)}%`) : '0.000%';
                                     statusBadge = `<span style="background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">OPEN</span>`;
-                                    pnlText = `<span style="color:${pnlColor}; font-weight:600;">Float: ${unSign}$${un.toFixed(2)}</span>`;
+                                    pnlText = `<span style="color:${pnlColor}; font-weight:600;">Float: ${unSign}$${un.toFixed(2)} (${diffPct})</span>`;
                                 } else if (status === 'WON') {
                                     const pnl = t.pnl || 0.0;
                                     statusBadge = `<span style="background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">WON</span>`;
