@@ -146,6 +146,64 @@
             transform: translateY(-1px);
         }
 
+        /* Tooltip styles */
+        [data-tooltip] {
+            position: relative;
+            cursor: help;
+        }
+        [data-tooltip]::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #0f172a;
+            color: #e2e8f0;
+            font-size: 0.75rem;
+            font-weight: 500;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.12);
+            white-space: normal;
+            max-width: 240px;
+            width: max-content;
+            text-align: center;
+            line-height: 1.4;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            z-index: 9999;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+        [data-tooltip]:hover::after {
+            opacity: 1;
+        }
+
+        .info-box {
+            background: rgba(59, 130, 246, 0.07);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: 10px;
+            padding: 12px 14px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-top: 14px;
+        }
+        .info-box strong {
+            color: var(--text-primary);
+        }
+        .info-box .info-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 6px;
+            align-items: flex-start;
+        }
+        .info-box .info-row:last-child { margin-bottom: 0; }
+        .info-box .info-icon {
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
         .status-badge {
             display: inline-flex;
             align-items: center;
@@ -341,6 +399,50 @@
             background: var(--input-bg) !important;
             border-color: var(--border-color) !important;
         }
+
+        /* Bot activity pulse */
+        @keyframes botPulse {
+            0%   { box-shadow: 0 0 0 0 rgba(16,185,129,0.5); }
+            70%  { box-shadow: 0 0 0 10px rgba(16,185,129,0); }
+            100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+        }
+        .bot-active-pulse {
+            animation: botPulse 2s infinite;
+        }
+
+        /* New trade row flash */
+        @keyframes rowFlash {
+            0%   { background: rgba(59,130,246,0.25); }
+            100% { background: transparent; }
+        }
+        .new-trade-row {
+            animation: rowFlash 1.5s ease-out forwards;
+        }
+
+        /* Pulsing dot for running bot */
+        @keyframes pulseDot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.7); }
+        }
+        .pulse-dot {
+            animation: pulseDot 1.2s ease-in-out infinite;
+        }
+
+        /* Bot running banner */
+        #botActivityBar {
+            display: none;
+            background: linear-gradient(90deg, rgba(16,185,129,0.12), rgba(59,130,246,0.12));
+            border: 1px solid rgba(16,185,129,0.3);
+            border-radius: 10px;
+            padding: 8px 16px;
+            margin-bottom: 16px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        #botActivityBar.active { display: flex; }
     </style>
 </head>
 
@@ -364,12 +466,27 @@
                 <span id="themeIcon">🌙</span>
                 <span id="themeText">Dark</span>
             </button>
-            <button id="toggleBtn" class="btn-toggle start" onclick="toggleBot()">Start Trading Bot</button>
+            <button id="toggleBtn" class="btn-toggle start" onclick="toggleBot()"
+                data-tooltip="Starts the automated bot that watches the market 24/7 and auto-trades when MA crossover signals are detected."
+            >🤖 Start Trading Bot</button>
         </div>
     </header>
 
+    <!-- Bot Running Activity Bar -->
+    <div id="botActivityBar">
+        <span style="display:flex;align-items:center;gap:6px;">
+            <span class="pulse-dot" style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;"></span>
+            <span style="font-weight:700;color:#10b981;">BOT RUNNING</span>
+        </span>
+        <span>Candles scanned: <strong id="candlesChecked" style="color:#ffffff;">0</strong></span>
+        <span>Live Price: <strong id="livePriceVal" style="color:#60a5fa;">--</strong></span>
+        <span>Fast EMA: <strong id="liveFastMa" style="color:#60a5fa;">--</strong></span>
+        <span>Slow EMA: <strong id="liveSlowMa" style="color:#f59e0b;">--</strong></span>
+        <span style="margin-left:auto;font-size:0.75rem;">Auto-trading every new candle in DEMO mode</span>
+    </div>
+
     <div class="metrics-grid">
-        <div class="metric-card">
+        <div class="metric-card" id="balanceCard">
             <div class="metric-title">Account Balance / Equity</div>
             <div id="metricBalance" class="metric-value">$1,000.00</div>
             <div id="metricDailyPnl" style="font-size:0.78rem; margin-top:6px; color: var(--text-secondary);">
@@ -437,11 +554,35 @@
                 <button class="btn-primary" onclick="runBacktest()">Run Backtest Simulation</button>
 
                 <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-color);">
-                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 8px; font-weight: 600;">Instant Trade & Balance Simulator</div>
+                    <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">Manual Demo Trade</span>
+                        <span style="font-size: 0.7rem; background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); padding: 1px 6px; border-radius: 4px; font-weight: 600;">Bot OFF is OK</span>
+                    </div>
+                    <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.5;">Place an instant $10 demo trade right now — no signal or bot needed.</p>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        <button type="button" onclick="placeManualTrade('CALL')" style="flex: 1; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 8px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">⚡ BUY (Price UP ▲)</button>
-                        <button type="button" onclick="placeManualTrade('PUT')" style="flex: 1; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); padding: 8px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">⚡ SELL (Price DOWN ▼)</button>
+                        <button type="button" onclick="placeManualTrade('CALL')"
+                            data-tooltip="Instantly places a $10 DEMO CALL trade betting price goes UP. No signal needed — bot can be stopped."
+                            style="flex: 1; background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 8px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">⚡ BUY (Price UP ▲)</button>
+                        <button type="button" onclick="placeManualTrade('PUT')"
+                            data-tooltip="Instantly places a $10 DEMO PUT trade betting price goes DOWN. No signal needed — bot can be stopped."
+                            style="flex: 1; background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); padding: 8px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">⚡ SELL (Price DOWN ▼)</button>
                         <button type="button" onclick="resetAccountBalance()" style="background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.3); padding: 8px 10px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem;">🔄 Reset $1,000</button>
+                    </div>
+
+                    <!-- How It Works Info Box -->
+                    <div class="info-box">
+                        <div class="info-row">
+                            <span class="info-icon">🤖</span>
+                            <span><strong>Start Trading Bot</strong> — Autopilot. Bot fetches candles every 5s, detects MA crossover signals, and <em>auto-executes trades</em> when BUY/SELL fires. Fully automatic.</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-icon">⚡</span>
+                            <span><strong>BUY / SELL buttons</strong> — Manual instant demo trade. Places a trade <em>right now</em> with no signal needed. Tests P&amp;L &amp; balance. Bot doesn't need to be running.</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-icon">📊</span>
+                            <span><strong>Chart ▲▼ Arrows</strong> — Historical backtest signals showing where the MA strategy <em>would have traded</em> in the past, based on your current settings above.</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -505,16 +646,19 @@
                 <canvas id="equityChart" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none;"></canvas>
             </div>
 
-            <h4 style="margin-top: 16px; margin-bottom: 12px; font-size: 0.95rem; color: var(--text-secondary);">Recent
-                Executed Trades</h4>
-            <div style="overflow-x: auto; max-height: 200px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;margin-bottom:12px;">
+                <h4 style="font-size: 0.95rem; color: var(--text-secondary); margin:0;">Recent Executed Trades</h4>
+                <span id="tradeCountBadge" style="font-size:0.75rem;background:rgba(59,130,246,0.12);color:#60a5fa;border:1px solid rgba(59,130,246,0.25);padding:2px 8px;border-radius:6px;font-weight:600;">0 trades</span>
+            </div>
+            <div style="overflow-x: auto; max-height: 260px;">
                 <table>
                     <thead>
                         <tr>
                             <th>Time</th>
                             <th>Symbol</th>
                             <th>Side</th>
-                            <th>Stake (Invested)</th>
+                            <th>Source</th>
+                            <th>Stake</th>
                             <th>Entry Price</th>
                             <th>Current / Exit</th>
                             <th>Status</th>
@@ -524,7 +668,7 @@
                     </thead>
                     <tbody id="tradeLogBody">
                         <tr>
-                            <td colspan="9" style="text-align: center; color: var(--text-secondary);">No active trades yet. Start bot or place demo trade above.</td>
+                            <td colspan="10" style="text-align: center; color: var(--text-secondary);">No trades yet. Start bot or click BUY/SELL above.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -964,17 +1108,25 @@
             const badge = document.getElementById('statusBadge');
             const text = document.getElementById('statusText');
             const btn = document.getElementById('toggleBtn');
+            const actBar = document.getElementById('botActivityBar');
+            const balCard = document.getElementById('balanceCard');
 
             if (running) {
                 badge.className = 'status-badge active';
                 text.innerText = 'RUNNING';
                 btn.className = 'btn-toggle stop';
-                btn.innerText = 'Stop Trading Bot';
+                btn.innerText = '⏹ Stop Trading Bot';
+                btn.setAttribute('data-tooltip', 'Stop the automated bot.');
+                if (actBar) actBar.classList.add('active');
+                if (balCard) balCard.classList.add('bot-active-pulse');
             } else {
                 badge.className = 'status-badge';
                 text.innerText = 'STOPPED';
                 btn.className = 'btn-toggle start';
-                btn.innerText = 'Start Trading Bot';
+                btn.innerText = '🤖 Start Trading Bot';
+                btn.setAttribute('data-tooltip', 'Start the automated bot. It will watch the market every 3 seconds and auto-trade on every new candle in DEMO mode.');
+                if (actBar) actBar.classList.remove('active');
+                if (balCard) balCard.classList.remove('bot-active-pulse');
             }
         }
 
@@ -1158,6 +1310,23 @@
                         modeDetailEl.innerText = isLive ? 'Live real money orders' : 'Simulated demo orders';
                     }
 
+                    // ── Bot Activity Bar — candles scanned, live price, MA values ──────
+                    const actBar = document.getElementById('botActivityBar');
+                    if (state.running) {
+                        if (actBar) actBar.classList.add('active');
+                        const ccEl = document.getElementById('candlesChecked');
+                        if (ccEl) ccEl.innerText = state.candles_checked || 0;
+                        const lpEl = document.getElementById('livePriceVal');
+                        const isFrxSym = (state.symbol || '').includes('frx') || (state.symbol || '').includes('/');
+                        if (lpEl && state.last_price) lpEl.innerText = isFrxSym ? state.last_price.toFixed(5) : state.last_price.toFixed(4);
+                        const fmaEl = document.getElementById('liveFastMa');
+                        if (fmaEl && state.last_fast_ma) fmaEl.innerText = isFrxSym ? state.last_fast_ma.toFixed(5) : state.last_fast_ma.toFixed(4);
+                        const smaEl = document.getElementById('liveSlowMa');
+                        if (smaEl && state.last_slow_ma) smaEl.innerText = isFrxSym ? state.last_slow_ma.toFixed(5) : state.last_slow_ma.toFixed(4);
+                    } else {
+                        if (actBar) actBar.classList.remove('active');
+                    }
+
                     // ── Worker Console timestamp ──────────────────────────────
                     document.getElementById('liveLastCheck').innerText = `Checked: ${localTimeStr}`;
 
@@ -1232,9 +1401,21 @@
 
                     // ── Live Trade Table ──────────────────────────────────────
                     const tbody = document.getElementById('tradeLogBody');
+                    const tradeBadge = document.getElementById('tradeCountBadge');
+                    const liveTradesForTable = state.live_trades || [];
+
+                    if (tradeBadge) {
+                        tradeBadge.innerText = `${liveTradesForTable.length} trade${liveTradesForTable.length !== 1 ? 's' : ''}`;
+                    }
+
                     if (tbody) {
-                        if (state.live_trades && state.live_trades.length > 0) {
-                            tbody.innerHTML = state.live_trades.map(t => {
+                        if (liveTradesForTable.length > 0) {
+                            const prevFirstId = tbody.getAttribute('data-first-id') || '';
+                            const newFirstId = liveTradesForTable[0]?.contract_id || '';
+                            const isNewTrade = newFirstId !== prevFirstId;
+                            tbody.setAttribute('data-first-id', newFirstId);
+
+                            tbody.innerHTML = liveTradesForTable.map((t, idx) => {
                                 const status = t.status || 'OPEN';
                                 let statusBadge = '';
                                 let pnlText = '';
@@ -1248,29 +1429,39 @@
                                     pnlText = `<span style="color:${pnlColor}; font-weight:600;">Float: ${unSign}$${un.toFixed(2)} (${diffPct})</span>`;
                                 } else if (status === 'WON') {
                                     const pnl = t.pnl || 0.0;
-                                    statusBadge = `<span style="background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">WON</span>`;
+                                    statusBadge = `<span style="background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">✅ WON</span>`;
                                     pnlText = `<span style="color:#10b981; font-weight:600;">+$${pnl.toFixed(2)}</span>`;
                                 } else if (status === 'LOST') {
                                     const pnl = t.pnl || 0.0;
-                                    statusBadge = `<span style="background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">LOST</span>`;
+                                    statusBadge = `<span style="background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">❌ LOST</span>`;
                                     pnlText = `<span style="color:#ef4444; font-weight:600;">-$${Math.abs(pnl).toFixed(2)}</span>`;
                                 } else {
-                                    statusBadge = `<span style="background: rgba(148,163,184,0.15); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">DRAW</span>`;
+                                    statusBadge = `<span style="background: rgba(148,163,184,0.15); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 600;">⚖️ DRAW</span>`;
                                     pnlText = `<span style="color:#94a3b8;">$0.00</span>`;
                                 }
 
                                 const isFrx = (t.symbol || state.symbol || '').includes('frx') || (t.symbol || state.symbol || '').includes('/');
                                 const prec = isFrx ? 5 : 4;
                                 const entryPriceText = typeof t.price === 'number' ? t.price.toFixed(prec) : t.price;
-                                const exitPriceText = t.exit_price ? (typeof t.exit_price === 'number' ? t.exit_price.toFixed(prec) : t.exit_price) : (t.current_price ? (typeof t.current_price === 'number' ? t.current_price.toFixed(prec) : t.current_price) : '--');
-                                const balAfterText = typeof t.balance_after === 'number' ? `$${t.balance_after.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : `$${equity.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                                const exitPriceText = t.exit_price
+                                    ? (typeof t.exit_price === 'number' ? t.exit_price.toFixed(prec) : t.exit_price)
+                                    : (t.current_price ? (typeof t.current_price === 'number' ? t.current_price.toFixed(prec) : t.current_price) : '--');
+                                const balAfterText = typeof t.balance_after === 'number'
+                                    ? `$${t.balance_after.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
+                                    : `$${equity.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
                                 const stakeText = `$${(t.stake || 10.0).toFixed(2)}`;
+                                const src = t.source || 'BOT';
+                                const srcBadge = src === 'MANUAL'
+                                    ? `<span style="background:rgba(245,158,11,0.12);color:#f59e0b;border:1px solid rgba(245,158,11,0.3);padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;">⚡ MANUAL</span>`
+                                    : `<span style="background:rgba(59,130,246,0.12);color:#60a5fa;border:1px solid rgba(59,130,246,0.25);padding:1px 6px;border-radius:4px;font-size:0.7rem;font-weight:600;">🤖 BOT</span>`;
+                                const rowClass = (idx === 0 && isNewTrade) ? 'new-trade-row' : '';
 
                                 return `
-                                    <tr>
-                                        <td>${t.time}</td>
-                                        <td>${t.symbol || state.symbol}</td>
-                                        <td style="color: ${t.type === 'CALL' ? '#10b981' : '#ef4444'}; font-weight: 700;">${t.type}</td>
+                                    <tr class="${rowClass}">
+                                        <td style="font-size:0.8rem;white-space:nowrap;">${t.time}</td>
+                                        <td style="font-weight:600;">${t.symbol || state.symbol}</td>
+                                        <td style="color: ${t.type === 'CALL' ? '#10b981' : '#ef4444'}; font-weight: 700;">${t.type === 'CALL' ? '▲ CALL' : '▼ PUT'}</td>
+                                        <td>${srcBadge}</td>
                                         <td style="font-weight: 700; color: #ffffff;">${stakeText}</td>
                                         <td>${entryPriceText}</td>
                                         <td>${exitPriceText}</td>
@@ -1281,7 +1472,7 @@
                                 `;
                             }).join('');
                         } else {
-                            tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-secondary);">No active trades yet. Start bot or place demo trade above.</td></tr>`;
+                            tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--text-secondary);">No trades yet. Start bot or click BUY/SELL above.</td></tr>`;
                         }
                     }
                 }

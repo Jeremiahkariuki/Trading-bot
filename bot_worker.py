@@ -4,6 +4,11 @@ bot_worker.py
 Background worker thread that runs continuous live/paper trading loop.
 Monitors real-time candles from Deriv, checks MA crossover signals, enforces
 risk management rules, executes trades, and dynamically updates settled balance & daily P&L.
+
+DEMO MODE behaviour:
+  - Places a trade on EVERY new candle using the current MA direction (trend-following)
+  - This ensures the bot is always visually active and trades are shown in real-time
+  - MA crossover signals remain the primary signal; trend direction fills in between
 """
 
 import asyncio
@@ -18,10 +23,20 @@ from deriv_live_client import DerivLiveClient
 from risk_manager import RiskManager
 
 
+TIMEFRAME_TO_GRANULARITY = {
+    "1min": 60, "5min": 300, "15min": 900,
+    "1h": 3600, "1hour": 3600, "1 Hour": 3600,
+    "4h": 14400, "1d": 86400,
+}
+
+
 class TradingBotWorker:
     """
     Manages continuous background polling, signal evaluation, trade settlement,
     and real-time account balance / equity / daily P&L dynamic tracking.
+
+    In DEMO mode the bot places a trade on every new candle using the current
+    MA trend direction so the dashboard always shows fresh activity.
     """
 
     def __init__(self, bot_state: Dict[str, Any], risk_mgr: RiskManager):
@@ -31,8 +46,13 @@ class TradingBotWorker:
         self._stop_event = threading.Event()
         self.last_candle_timestamp = None
         self.last_net_error_log_time = 0
+        self.candles_checked = 0
         self.bot_state["network_status"] = "ONLINE"
         self.bot_state["network_error_msg"] = ""
+        self.bot_state.setdefault("candles_checked", 0)
+        self.bot_state.setdefault("last_fast_ma", None)
+        self.bot_state.setdefault("last_slow_ma", None)
+        self.bot_state.setdefault("last_price", None)
         self.client = DerivLiveClient(
             api_token=bot_state.get("api_token", ""),
             paper_mode=(bot_state.get("mode", "DEMO").upper() in ["DEMO", "PAPER"]),
@@ -44,8 +64,8 @@ class TradingBotWorker:
         print(f"[BotWorker] {entry}")
         logs = self.bot_state.setdefault("logs", [])
         logs.append(entry)
-        if len(logs) > 100:
-            self.bot_state["logs"] = logs[-100:]
+        if len(logs) > 150:
+            self.bot_state["logs"] = logs[-150:]
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -53,14 +73,14 @@ class TradingBotWorker:
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
-        self.log("Background Trading Worker STARTED.")
+        self.log("🤖 Background Trading Worker STARTED — scanning market every 3 seconds.")
 
     def stop(self):
         if self._thread and self._thread.is_alive():
             self._stop_event.set()
-            self.log("Background Trading Worker STOPPING...")
+            self.log("⏹ Background Trading Worker STOPPING...")
             self._thread.join(timeout=3.0)
-            self.log("Background Trading Worker STOPPED.")
+            self.log("⏹ Background Trading Worker STOPPED.")
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive() and not self._stop_event.is_set()
@@ -107,7 +127,7 @@ class TradingBotWorker:
                 last_p = t.get("current_price", entry_price)
                 trade_price = latest_price if (latest_price and latest_price > 0) else last_p
 
-                # Apply realistic micro tick fluctuation (±0.005% to ±0.03%) so current price moves dynamically on every status check
+                # Apply realistic micro tick fluctuation so current price moves dynamically
                 if elapsed > 0 and elapsed < duration_sec:
                     pct_change = random.uniform(-0.0003, 0.0003)
                     prec = 5 if ("frx" in symbol or "/" in symbol) else 4
@@ -172,10 +192,12 @@ class TradingBotWorker:
 
                     self.risk_mgr.record_trade_close(final_pnl, new_bal)
 
+                    pnl_icon = "✅" if outcome == "WON" else ("❌" if outcome == "LOST" else "⚖️")
                     pnl_sign = "+" if final_pnl >= 0 else ""
                     self.log(
-                        f"Trade #{t['contract_id']} [{contract_type}] SETTLED -> {outcome}! "
-                        f"Entry: {entry_price:.4f} | Exit: {t['exit_price']:.4f} | P&L: {pnl_sign}${final_pnl:.2f} | Balance: ${new_bal:,.2f}"
+                        f"{pnl_icon} Trade #{t['contract_id']} [{contract_type}] SETTLED → {outcome}! "
+                        f"Entry: {entry_price:.4f} | Exit: {t['exit_price']:.4f} | "
+                        f"P&L: {pnl_sign}${final_pnl:.2f} | Balance: ${new_bal:,.2f}"
                     )
                 else:
                     unrealized_sum += unrealized
@@ -224,11 +246,15 @@ class TradingBotWorker:
             "unrealized_pnl": -stake,
             "floating_payout": 0.0,
             "balance_after": self.bot_state["balance"],
+            "source": "MANUAL",
         }
 
         live_trades = self.bot_state.setdefault("live_trades", [])
         live_trades.insert(0, trade_entry)
-        self.log(f"Manual {direction} order placed on {symbol} @ {entry_price:.4f} (Stake: ${stake:.2f}, Duration: {duration_seconds}s). Stake ${stake:.2f} deducted. Cash: ${self.bot_state['balance']:.2f}")
+        self.log(
+            f"⚡ Manual {direction} placed on {symbol} @ {entry_price:.4f} "
+            f"(Stake: ${stake:.2f}, Duration: {duration_seconds}s) | Cash: ${self.bot_state['balance']:.2f}"
+        )
 
         self.evaluate_open_trades(entry_price)
         return {
@@ -237,9 +263,64 @@ class TradingBotWorker:
             "state": self.bot_state,
         }
 
+    def _place_bot_trade(self, symbol: str, contract_type: str, price: float, stake: float,
+                         signal_reason: str, duration_seconds: int = 120):
+        """Internal helper: deducts stake, logs entry, executes via live client, stores in trade history."""
+        current_bal = self.bot_state.get("balance", 1000.0)
+        can_trade, reason = self.risk_mgr.can_open_trade(current_bal, stake=stake)
+        if not can_trade:
+            self.log(f"⚠️  Trade blocked by risk manager: {reason}")
+            return
+
+        self.bot_state["balance"] = round(current_bal - stake, 2)
+
+        trade_result = asyncio.run(
+            self.client.execute_trade(
+                symbol=symbol,
+                contract_type=contract_type,
+                stake=stake,
+                duration=2,
+                duration_unit="m",
+            )
+        )
+
+        contract_id = trade_result.get("contract_id", f"BOT_{int(time.time() * 1000)}")
+        trade_entry = {
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "contract_id": contract_id,
+            "symbol": symbol,
+            "type": contract_type,
+            "price": price,
+            "stake": stake,
+            "duration_seconds": duration_seconds,
+            "mode": self.bot_state.get("mode", "DEMO"),
+            "status": "OPEN",
+            "current_price": price,
+            "unrealized_pnl": -stake,
+            "floating_payout": 0.0,
+            "balance_after": self.bot_state["balance"],
+            "source": signal_reason,
+        }
+
+        live_trades = self.bot_state.setdefault("live_trades", [])
+        live_trades.insert(0, trade_entry)
+
+        # Keep max 50 trade records
+        if len(live_trades) > 50:
+            self.bot_state["live_trades"] = live_trades[:50]
+
+        self.log(
+            f"📈 BOT ORDER [{contract_type}] — {signal_reason} | {symbol} @ {price:.4f} | "
+            f"Stake: ${stake:.2f} | Cash: ${self.bot_state['balance']:.2f} | ID: {contract_id}"
+        )
+        self.evaluate_open_trades(price)
+
     def _run_loop(self):
         self.client.paper_mode = (self.bot_state.get("mode", "DEMO").upper() in ["DEMO", "PAPER"])
         self.client.api_token = self.bot_state.get("api_token", "")
+
+        is_demo = self.client.paper_mode
+        demo_candle_counter = 0  # counts new candles seen since bot started
 
         while not self._stop_event.is_set() and self.bot_state.get("running", False):
             try:
@@ -249,9 +330,6 @@ class TradingBotWorker:
                 slow_ma = int(self.bot_state.get("slow_ma", 30))
                 use_htf = bool(self.bot_state.get("use_htf", False))
 
-                TIMEFRAME_TO_GRANULARITY = {
-                    "1min": 60, "5min": 300, "15min": 900, "1h": 3600, "1hour": 3600, "1 Hour": 3600
-                }
                 granularity = TIMEFRAME_TO_GRANULARITY.get(timeframe, 300)
                 df_base = fetch_candles_sync(symbol=symbol, granularity_seconds=granularity, count=300)
                 self.bot_state["last_check_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -263,13 +341,12 @@ class TradingBotWorker:
                     self.bot_state["network_error_msg"] = ""
 
                     latest_price = float(df_base.iloc[-1].get("close", 0.0))
+                    self.bot_state["last_price"] = latest_price
 
                     # 1. Monitor & settle active trades
                     self.evaluate_open_trades(latest_price)
 
-                    # 2. Check strategy signals
-                    df_tf = df_base
-
+                    # 2. Compute strategy signals
                     htf_tf = "15min" if timeframe in ["1min", "5min"] else "4h"
                     strategy = MACrossoverStrategy(StrategyConfig(
                         fast_period=fast_ma,
@@ -278,68 +355,112 @@ class TradingBotWorker:
                         use_htf_filter=use_htf,
                         htf_timeframe=htf_tf,
                     ))
-                    signals = strategy.generate_signals(df_tf, base_df=df_base)
+                    signals = strategy.generate_signals(df_base, base_df=df_base)
 
                     if not signals.empty:
                         latest_row = signals.iloc[-1]
-                        current_candle_ts = latest_row.get("epoch", str(latest_row.name))
-                        signal_val = latest_row.get("signal", 0)
-                        price = float(latest_row.get("close", 0.0))
+                        current_candle_ts = str(latest_row.name)
+                        signal_val = int(latest_row.get("signal", 0))
+                        position_val = int(latest_row.get("position", 0))  # +1 = fast>slow, -1 = fast<slow
 
-                        signal_text = "BUY (CALL)" if signal_val == 1 else ("SELL (PUT)" if signal_val == -1 else "HOLD")
+                        # Read MA values for display
+                        fast_ma_val = latest_row.get("fast_ma", None)
+                        slow_ma_val = latest_row.get("slow_ma", None)
+                        import pandas as pd
+                        if fast_ma_val is not None and not pd.isna(fast_ma_val):
+                            self.bot_state["last_fast_ma"] = round(float(fast_ma_val), 5)
+                        if slow_ma_val is not None and not pd.isna(slow_ma_val):
+                            self.bot_state["last_slow_ma"] = round(float(slow_ma_val), 5)
+
+                        # Derive signal text
+                        if signal_val == 1:
+                            signal_text = "BUY (CALL)"
+                        elif signal_val == -1:
+                            signal_text = "SELL (PUT)"
+                        elif position_val == 1:
+                            signal_text = "HOLD — Trend UP ↑"
+                        elif position_val == -1:
+                            signal_text = "HOLD — Trend DOWN ↓"
+                        else:
+                            signal_text = "HOLD"
                         self.bot_state["last_signal"] = signal_text
 
-                        if current_candle_ts != self.last_candle_timestamp and signal_val in [1, -1]:
+                        # ── Stake sizing (1% of balance, min $1) ──────────────────
+                        stake = round(self.bot_state["balance"] * 0.01, 2)
+                        if stake < 1.0:
+                            stake = 1.0
+
+                        # ── NEW CANDLE detected ───────────────────────────────────
+                        if current_candle_ts != self.last_candle_timestamp:
                             self.last_candle_timestamp = current_candle_ts
+                            demo_candle_counter += 1
+                            self.candles_checked += 1
+                            self.bot_state["candles_checked"] = self.candles_checked
 
-                            contract_type = "CALL" if signal_val == 1 else "PUT"
-                            stake = round(self.bot_state["balance"] * 0.01, 2)
-                            if stake < 1.0:
-                                stake = 1.0
+                            prec_str = (
+                                f"{latest_price:.5f}" if ("frx" in symbol or "/" in symbol)
+                                else f"{latest_price:.4f}"
+                            )
+                            fma_str = f"{self.bot_state['last_fast_ma']:.5f}" if self.bot_state.get("last_fast_ma") else "N/A"
+                            sma_str = f"{self.bot_state['last_slow_ma']:.5f}" if self.bot_state.get("last_slow_ma") else "N/A"
 
-                            can_trade, reason = self.risk_mgr.can_open_trade(self.bot_state["balance"], stake=stake)
-                            if not can_trade:
-                                self.log(f"Signal {signal_text} ignored: {reason}")
-                            else:
-                                prec_str = f"{price:.5f}" if ("frx" in symbol or "/" in symbol) else f"{price:.4f}"
-                                self.log(f"Signal confirmed: {signal_text} on {symbol} @ {prec_str}. Executing order (Stake: ${stake:.2f})...")
-
-                                trade_result = asyncio.run(
-                                    self.client.execute_trade(
-                                        symbol=symbol,
-                                        contract_type=contract_type,
-                                        stake=stake,
-                                        duration=5,
-                                        duration_unit="m",
-                                    )
+                            # ── 🎯 MA CROSSOVER SIGNAL — highest priority ─────────────
+                            if signal_val in [1, -1]:
+                                contract_type = "CALL" if signal_val == 1 else "PUT"
+                                direction_label = "BUY ▲" if signal_val == 1 else "SELL ▼"
+                                self.log(
+                                    f"🎯 MA CROSSOVER SIGNAL! {direction_label} on {symbol} | "
+                                    f"Price: {prec_str} | Fast EMA: {fma_str} | Slow EMA: {sma_str}"
+                                )
+                                self._place_bot_trade(
+                                    symbol=symbol,
+                                    contract_type=contract_type,
+                                    price=latest_price,
+                                    stake=stake,
+                                    signal_reason=f"MA Crossover {direction_label}",
+                                    duration_seconds=120,
                                 )
 
-                                # Deduct stake from cash balance immediately upon order placement
-                                current_bal = self.bot_state.get("balance", 1000.0)
-                                self.bot_state["balance"] = round(current_bal - stake, 2)
-
-                                live_trades = self.bot_state.setdefault("live_trades", [])
-                                trade_entry = {
-                                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                    "contract_id": trade_result.get("contract_id", "N/A"),
-                                    "symbol": symbol,
-                                    "type": contract_type,
-                                    "price": price,
-                                    "stake": stake,
-                                    "duration_seconds": 120, # 2 minutes duration
-                                    "mode": trade_result.get("mode", "DEMO"),
-                                    "status": "OPEN",
-                                    "current_price": price,
-                                    "unrealized_pnl": -stake,
-                                    "floating_payout": 0.0,
-                                    "balance_after": self.bot_state["balance"],
-                                }
-                                live_trades.insert(0, trade_entry)
-                                self.log(f"Order executed! ID: {trade_entry['contract_id']} | Stake ${stake:.2f} deducted | Cash: ${self.bot_state['balance']:.2f}")
-                                self.evaluate_open_trades(price)
+                            # ── 📊 DEMO MODE: trade every candle using trend direction ─
+                            elif is_demo and position_val != 0:
+                                # In DEMO mode, trade every new candle in trend direction
+                                # so the bot is always visually active
+                                contract_type = "CALL" if position_val == 1 else "PUT"
+                                trend_label = "Trend UP ↑" if position_val == 1 else "Trend DOWN ↓"
+                                self.log(
+                                    f"📊 DEMO Trend Trade [{contract_type}] | {symbol} @ {prec_str} | "
+                                    f"Fast EMA: {fma_str} | Slow EMA: {sma_str} | {trend_label}"
+                                )
+                                self._place_bot_trade(
+                                    symbol=symbol,
+                                    contract_type=contract_type,
+                                    price=latest_price,
+                                    stake=stake,
+                                    signal_reason=f"Demo {trend_label}",
+                                    duration_seconds=120,
+                                )
+                            else:
+                                # Live mode or no position — just log market status
+                                trend_emoji = "📈" if position_val == 1 else ("📉" if position_val == -1 else "➡️")
+                                self.log(
+                                    f"{trend_emoji} Monitoring {symbol} ({timeframe}) | "
+                                    f"Price: {prec_str} | Fast EMA: {fma_str} | Slow EMA: {sma_str} | "
+                                    f"Signal: {signal_text} | Equity: ${self.bot_state.get('equity', 1000):,.2f}"
+                                )
                         else:
-                            if int(time.time()) % 60 < 11:
-                                self.log(f"Monitoring {symbol} ({timeframe}) | Signal: {signal_text} | Price: {price:.4f} | Equity: ${self.bot_state.get('equity', 1000):,.2f}")
+                            # Same candle — just settle trades and update price, no new trade
+                            if int(time.time()) % 15 < 4:
+                                prec_str = (
+                                    f"{latest_price:.5f}" if ("frx" in symbol or "/" in symbol)
+                                    else f"{latest_price:.4f}"
+                                )
+                                open_trades = len([t for t in self.bot_state.get("live_trades", []) if t.get("status") == "OPEN"])
+                                self.log(
+                                    f"⏱ Waiting for next candle | {symbol} @ {prec_str} | "
+                                    f"Open trades: {open_trades} | Signal: {signal_text} | "
+                                    f"Equity: ${self.bot_state.get('equity', 1000):,.2f}"
+                                )
+
             except Exception as e:
                 err_str = str(e)
                 is_net = (
@@ -362,5 +483,4 @@ class TradingBotWorker:
                 else:
                     self.log(f"Worker Exception: {err_str}")
 
-            self._stop_event.wait(5.0) # Check every 5 seconds for smooth balance updating
-
+            self._stop_event.wait(3.0)  # Poll every 3 seconds for smooth live updates
