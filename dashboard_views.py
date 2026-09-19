@@ -25,6 +25,11 @@ BOT_STATE = {
     "fast_ma": 10,
     "slow_ma": 30,
     "use_htf": False,
+    "trade_stake": 10.0,
+    "trade_duration_sec": 60,
+    "bot_run_minutes": 0,
+    "start_timestamp": None,
+    "auto_stop_at": None,
     "initial_balance": 1000.0,
     "balance": 1000.0,
     "unrealized_pnl": 0.0,
@@ -73,7 +78,7 @@ def index_view(request):
 
 
 def api_status_view(request):
-    """Returns current bot status, risk state, and balance."""
+    """Returns current bot status, risk state, balance, and timer info."""
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if not worker.is_running():
         worker.evaluate_open_trades()
@@ -98,9 +103,21 @@ def api_status_view(request):
     BOT_STATE["daily_pnl"] = daily_pnl
     BOT_STATE["daily_pnl_pct"] = daily_pnl_pct
 
+    # Calculate session timer remaining seconds
+    timer_remaining = None
+    auto_stop_str = BOT_STATE.get("auto_stop_at")
+    if worker.is_running() and auto_stop_str:
+        try:
+            stop_dt = datetime.strptime(auto_stop_str, "%Y-%m-%d %H:%M:%S")
+            remaining = int((stop_dt - datetime.now()).total_seconds())
+            timer_remaining = max(0, remaining)
+        except Exception:
+            timer_remaining = None
+
     return JsonResponse({
         "status": "success",
         "state": BOT_STATE,
+        "timer_remaining_sec": timer_remaining,
         "network_status": BOT_STATE.get("network_status", "ONLINE"),
         "network_error": BOT_STATE.get("network_error_msg", ""),
         "risk_halted": risk_mgr.trading_halted,
@@ -112,16 +129,53 @@ def api_status_view(request):
 
 @csrf_exempt
 def api_toggle_view(request):
-    """Toggles bot running state (Start / Stop) and controls background worker."""
+    """Toggles bot running state (Start / Stop) with custom stake, trade duration, and bot session timer."""
+    from datetime import timedelta
     if request.method == "POST":
+        try:
+            data = json.loads(request.body) if request.body else {}
+        except Exception:
+            data = {}
+
+        if "stake" in data and data["stake"]:
+            try:
+                BOT_STATE["trade_stake"] = float(data["stake"])
+            except Exception:
+                pass
+        if "trade_duration_sec" in data and data["trade_duration_sec"]:
+            try:
+                BOT_STATE["trade_duration_sec"] = int(data["trade_duration_sec"])
+            except Exception:
+                pass
+        if "bot_run_minutes" in data and data["bot_run_minutes"] is not None:
+            try:
+                BOT_STATE["bot_run_minutes"] = int(data["bot_run_minutes"])
+            except Exception:
+                pass
+
         BOT_STATE["running"] = not BOT_STATE["running"]
         if BOT_STATE["running"]:
+            now_dt = datetime.now()
+            BOT_STATE["start_timestamp"] = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+            run_mins = BOT_STATE.get("bot_run_minutes", 0)
+            if run_mins > 0:
+                BOT_STATE["auto_stop_at"] = (now_dt + timedelta(minutes=run_mins)).strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                BOT_STATE["auto_stop_at"] = None
+
             worker.start()
             status_label = "STARTED"
         else:
+            BOT_STATE["auto_stop_at"] = None
             worker.stop()
             status_label = "STOPPED"
-        return JsonResponse({"status": "success", "running": BOT_STATE["running"], "message": f"Trading Bot {status_label}"})
+
+        return JsonResponse({
+            "status": "success",
+            "running": BOT_STATE["running"],
+            "message": f"Trading Bot {status_label}",
+            "state": BOT_STATE,
+        })
     return JsonResponse({"error": "POST method required"}, status=400)
 
 
@@ -137,6 +191,12 @@ def api_config_view(request):
             BOT_STATE["slow_ma"] = int(data.get("slow_ma", BOT_STATE["slow_ma"]))
             BOT_STATE["use_htf"] = bool(data.get("use_htf", BOT_STATE["use_htf"]))
             BOT_STATE["mode"] = data.get("mode", BOT_STATE["mode"])
+            if "trade_stake" in data:
+                BOT_STATE["trade_stake"] = float(data["trade_stake"])
+            if "trade_duration_sec" in data:
+                BOT_STATE["trade_duration_sec"] = int(data["trade_duration_sec"])
+            if "bot_run_minutes" in data:
+                BOT_STATE["bot_run_minutes"] = int(data["bot_run_minutes"])
             if "api_token" in data:
                 BOT_STATE["api_token"] = data["api_token"]
             return JsonResponse({"status": "success", "state": BOT_STATE})

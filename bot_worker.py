@@ -214,11 +214,20 @@ class TradingBotWorker:
         self.bot_state["daily_pnl"] = dpnl
         self.bot_state["daily_pnl_pct"] = round((dpnl / initial) * 100, 2) if initial > 0 else 0.0
 
-    def execute_manual_trade(self, direction: str = "CALL", stake: float = 10.0, duration_seconds: int = 60) -> Dict[str, Any]:
+    def execute_manual_trade(self, direction: str = "CALL", stake: Optional[float] = None, duration_seconds: Optional[int] = None) -> Dict[str, Any]:
         """
         Executes a manual test trade instantly so the user can test floating P&L and dynamic balance updates.
         """
-        stake = float(stake)
+        if stake is None or stake <= 0:
+            stake = float(self.bot_state.get("trade_stake", 10.0))
+        else:
+            stake = float(stake)
+
+        if duration_seconds is None or duration_seconds <= 0:
+            duration_seconds = int(self.bot_state.get("trade_duration_sec", 60))
+        else:
+            duration_seconds = int(duration_seconds)
+
         current_bal = self.bot_state.get("balance", 1000.0)
         can_trade, reason = self.risk_mgr.can_open_trade(current_bal, stake=stake)
         if not can_trade:
@@ -323,6 +332,20 @@ class TradingBotWorker:
         demo_candle_counter = 0  # counts new candles seen since bot started
 
         while not self._stop_event.is_set() and self.bot_state.get("running", False):
+            # Check auto-stop session timer if set
+            auto_stop_str = self.bot_state.get("auto_stop_at")
+            if auto_stop_str:
+                try:
+                    stop_dt = datetime.strptime(auto_stop_str, "%Y-%m-%d %H:%M:%S")
+                    if datetime.now() >= stop_dt:
+                        run_mins = self.bot_state.get("bot_run_minutes", 0)
+                        self.log(f"⏱️ Bot session timer finished ({run_mins} min{'s' if run_mins != 1 else ''}). Automatically stopping trading bot.")
+                        self.bot_state["running"] = False
+                        self.bot_state["auto_stop_at"] = None
+                        break
+                except Exception:
+                    pass
+
             try:
                 symbol = self.bot_state.get("symbol", "R_75")
                 timeframe = self.bot_state.get("timeframe", "5min")
@@ -385,10 +408,16 @@ class TradingBotWorker:
                             signal_text = "HOLD"
                         self.bot_state["last_signal"] = signal_text
 
-                        # ── Stake sizing (1% of balance, min $1) ──────────────────
-                        stake = round(self.bot_state["balance"] * 0.01, 2)
-                        if stake < 1.0:
-                            stake = 1.0
+                        # ── Stake & Duration sizing from user settings ────────────
+                        configured_stake = float(self.bot_state.get("trade_stake", 10.0))
+                        if configured_stake > 0:
+                            stake = round(configured_stake, 2)
+                        else:
+                            stake = round(self.bot_state["balance"] * 0.01, 2)
+                            if stake < 1.0:
+                                stake = 1.0
+
+                        trade_dur_sec = int(self.bot_state.get("trade_duration_sec", 60))
 
                         # ── NEW CANDLE detected ───────────────────────────────────
                         if current_candle_ts != self.last_candle_timestamp:
@@ -410,7 +439,7 @@ class TradingBotWorker:
                                 direction_label = "BUY ▲" if signal_val == 1 else "SELL ▼"
                                 self.log(
                                     f"🎯 MA CROSSOVER SIGNAL! {direction_label} on {symbol} | "
-                                    f"Price: {prec_str} | Fast EMA: {fma_str} | Slow EMA: {sma_str}"
+                                    f"Price: {prec_str} | Stake: ${stake:.2f} | Duration: {trade_dur_sec}s"
                                 )
                                 self._place_bot_trade(
                                     symbol=symbol,
@@ -418,18 +447,17 @@ class TradingBotWorker:
                                     price=latest_price,
                                     stake=stake,
                                     signal_reason=f"MA Crossover {direction_label}",
-                                    duration_seconds=120,
+                                    duration_seconds=trade_dur_sec,
                                 )
 
                             # ── 📊 DEMO MODE: trade every candle using trend direction ─
                             elif is_demo and position_val != 0:
                                 # In DEMO mode, trade every new candle in trend direction
-                                # so the bot is always visually active
                                 contract_type = "CALL" if position_val == 1 else "PUT"
                                 trend_label = "Trend UP ↑" if position_val == 1 else "Trend DOWN ↓"
                                 self.log(
                                     f"📊 DEMO Trend Trade [{contract_type}] | {symbol} @ {prec_str} | "
-                                    f"Fast EMA: {fma_str} | Slow EMA: {sma_str} | {trend_label}"
+                                    f"Stake: ${stake:.2f} | Duration: {trade_dur_sec}s | {trend_label}"
                                 )
                                 self._place_bot_trade(
                                     symbol=symbol,
@@ -437,7 +465,7 @@ class TradingBotWorker:
                                     price=latest_price,
                                     stake=stake,
                                     signal_reason=f"Demo {trend_label}",
-                                    duration_seconds=120,
+                                    duration_seconds=trade_dur_sec,
                                 )
                             else:
                                 # Live mode or no position — just log market status
