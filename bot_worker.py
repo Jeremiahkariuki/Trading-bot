@@ -325,13 +325,19 @@ class TradingBotWorker:
         self.evaluate_open_trades(price)
 
     def _run_loop(self):
-        self.client.paper_mode = (self.bot_state.get("mode", "DEMO").upper() in ["DEMO", "PAPER"])
-        self.client.api_token = self.bot_state.get("api_token", "")
-
-        is_demo = self.client.paper_mode
-        demo_candle_counter = 0  # counts new candles seen since bot started
-
         while not self._stop_event.is_set() and self.bot_state.get("running", False):
+            # Continuously sync client credentials from bot_state
+            mode_str = str(self.bot_state.get("mode", "DEMO")).upper()
+            self.client.paper_mode = (mode_str in ["DEMO", "PAPER"])
+            self.client.api_token = str(self.bot_state.get("api_token", "")).strip()
+            self.client.app_id = str(self.bot_state.get("app_id", "1089")).strip() or "1089"
+
+            is_demo = self.client.paper_mode
+
+            if not is_demo and not self.client.api_token:
+                if int(time.time()) % 15 < 3:
+                    self.log("⚠️ LIVE Real Trading Mode is active, but no Deriv API Token is configured! Click Settings ⚙️ in the header to enter your API Token.")
+
             # Check auto-stop session timer if set
             auto_stop_str = self.bot_state.get("auto_stop_at")
             if auto_stop_str:

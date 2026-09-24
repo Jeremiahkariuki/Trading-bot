@@ -124,6 +124,12 @@ def api_status_view(request):
         "halt_reason": risk_mgr.halt_reason,
         "can_trade": can_trade,
         "worker_active": worker.is_running(),
+        "risk_config": {
+            "max_daily_loss_pct": risk_mgr.config.max_daily_loss_pct,
+            "max_concurrent_trades": risk_mgr.config.max_concurrent_trades,
+            "atr_sl_multiplier": risk_mgr.config.atr_sl_multiplier,
+            "atr_tp_multiplier": risk_mgr.config.atr_tp_multiplier,
+        },
     })
 
 
@@ -181,7 +187,7 @@ def api_toggle_view(request):
 
 @csrf_exempt
 def api_config_view(request):
-    """Updates bot configuration parameters."""
+    """Updates bot configuration, credentials, trading mode, and risk management parameters."""
     if request.method == "POST":
         try:
             data = json.loads(request.body)
@@ -190,15 +196,42 @@ def api_config_view(request):
             BOT_STATE["fast_ma"] = int(data.get("fast_ma", BOT_STATE["fast_ma"]))
             BOT_STATE["slow_ma"] = int(data.get("slow_ma", BOT_STATE["slow_ma"]))
             BOT_STATE["use_htf"] = bool(data.get("use_htf", BOT_STATE["use_htf"]))
-            BOT_STATE["mode"] = data.get("mode", BOT_STATE["mode"])
+
+            if "mode" in data:
+                BOT_STATE["mode"] = str(data["mode"]).upper()
+            if "api_token" in data:
+                BOT_STATE["api_token"] = str(data["api_token"]).strip()
+            if "app_id" in data:
+                BOT_STATE["app_id"] = str(data["app_id"]).strip() or "1089"
+
             if "trade_stake" in data:
                 BOT_STATE["trade_stake"] = float(data["trade_stake"])
             if "trade_duration_sec" in data:
                 BOT_STATE["trade_duration_sec"] = int(data["trade_duration_sec"])
             if "bot_run_minutes" in data:
                 BOT_STATE["bot_run_minutes"] = int(data["bot_run_minutes"])
-            if "api_token" in data:
-                BOT_STATE["api_token"] = data["api_token"]
+
+            # Risk parameters update
+            if "max_daily_loss_pct" in data:
+                risk_mgr.config.max_daily_loss_pct = float(data["max_daily_loss_pct"])
+            if "max_concurrent_trades" in data:
+                risk_mgr.config.max_concurrent_trades = int(data["max_concurrent_trades"])
+            if "atr_sl_multiplier" in data:
+                risk_mgr.config.atr_sl_multiplier = float(data["atr_sl_multiplier"])
+            if "atr_tp_multiplier" in data:
+                risk_mgr.config.atr_tp_multiplier = float(data["atr_tp_multiplier"])
+
+            # Dynamically update live client instance properties
+            worker.client.paper_mode = (BOT_STATE["mode"] in ["DEMO", "PAPER"])
+            worker.client.api_token = BOT_STATE["api_token"]
+            worker.client.app_id = BOT_STATE.get("app_id", "1089")
+
+            token_status = "Configured ✅" if BOT_STATE["api_token"] else "None (Paper/Demo)"
+            worker.log(
+                f"⚙️ Settings & API Credentials updated! Mode: {BOT_STATE['mode']} | "
+                f"Token: {token_status} | Max Daily Loss: {risk_mgr.config.max_daily_loss_pct}% | "
+                f"Max Trades: {risk_mgr.config.max_concurrent_trades}"
+            )
             return JsonResponse({"status": "success", "state": BOT_STATE})
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)
