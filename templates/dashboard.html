@@ -1990,7 +1990,7 @@
             }
         }
 
-        async function runBacktest(isPrefetch = false, targetSymbol = null) {
+        async function runBacktest(isPrefetch = false, targetSymbol = null, isAutoRefresh = false) {
             const symbol = targetSymbol || document.getElementById('symbolSelect').value;
             const tf = document.getElementById('tfSelect').value;
             const fast = document.getElementById('fastMa').value;
@@ -2004,8 +2004,8 @@
             const curSlow = document.getElementById('slowMa').value;
             const curMtf = document.getElementById('mtfCheck').checked;
 
-            // INSTANT CACHE RENDER (< 1ms)
-            if (clientCache[cacheKey]) {
+            // INSTANT CACHE RENDER for initial manual switch (< 1ms)
+            if (clientCache[cacheKey] && !isAutoRefresh) {
                 if (!isPrefetch && curSymbol === symbol && curTf === tf && String(curFast) === String(fast) && String(curSlow) === String(slow) && Boolean(curMtf) === Boolean(mtf)) {
                     updateSymbolBadge(false);
                     renderChartFromData(clientCache[cacheKey]);
@@ -2015,11 +2015,11 @@
                 return;
             }
 
-            if (!isPrefetch) {
+            if (!isPrefetch && !isAutoRefresh) {
                 updateSymbolBadge(true);
             }
 
-            await fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, isPrefetch);
+            await fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, isPrefetch || isAutoRefresh);
         }
 
         // Lightweight pre-fetch for other timeframes on current active symbol only
@@ -2139,7 +2139,10 @@
             updateSymbolBadge();
             runBacktest();
             pollBotStatus();
-            setInterval(pollBotStatus, 3000);
+            setInterval(() => {
+                pollBotStatus();
+                runBacktest(false, null, true);
+            }, 3000);
             setTimeout(prefetchTimeframesAndSymbols, 50);
         };
     </script>

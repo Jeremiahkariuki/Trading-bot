@@ -105,20 +105,20 @@ async def fetch_candles(
 import time
 
 _CANDLE_CACHE = {}
-_CACHE_TTL_SECONDS = 120
+_CACHE_TTL_SECONDS = 3
 
 
 def generate_fallback_candles(symbol: str = "R_75", granularity_seconds: int = 60, count: int = 300) -> pd.DataFrame:
     """
-    Generates realistic synthetic OHLC candles when live Deriv WS is unreachable
-    or rejecting connections (e.g. HTTP 520 / Network offline).
-    Ensures the candlestick chart and indicators ALWAYS render smoothly.
+    Generates realistic synthetic OHLC candles ending at the exact current UTC timestamp.
+    Updates dynamically every 3 seconds to keep real-time chart candles progressing continuously.
     """
     import numpy as np
     from datetime import datetime, timedelta, timezone
 
     now = datetime.now(timezone.utc)
-    start_time = now - timedelta(seconds=granularity_seconds * count)
+    # Align end of series to current time
+    start_time = now - timedelta(seconds=granularity_seconds * (count - 1))
     timestamps = [start_time + timedelta(seconds=granularity_seconds * i) for i in range(count)]
 
     base_price = 1000.0
@@ -133,9 +133,9 @@ def generate_fallback_candles(symbol: str = "R_75", granularity_seconds: int = 6
     elif "frx" in symbol or "/" in symbol:
         base_price = 1.0850
 
-    # Deterministic seed based on 5-minute bucket for stable candle consistency
-    bucket_seed = int(now.timestamp()) // 300 + hash(symbol) % 10000
-    np.random.seed(abs(bucket_seed))
+    # Dynamic seed based on minute timestamp so candles progress smoothly in real-time
+    minute_bucket = int(now.timestamp()) // 60
+    np.random.seed(abs(minute_bucket + hash(symbol) % 10000))
 
     volatility = 0.0006 if ("frx" in symbol or "/" in symbol) else 0.0025
     returns = np.random.normal(0.0001, volatility, count)
