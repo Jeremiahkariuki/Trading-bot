@@ -122,7 +122,101 @@ class MACrossoverStrategy:
         out["position"] = state.fillna(0).astype(int)
         out["signal"] = signal
 
+        # Run Candlestick Pattern Recognition
+        out = detect_candlestick_patterns(out)
         return out
+
+
+def detect_candlestick_patterns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Scans OHLC candles to identify classic technical candlestick patterns:
+      - Bullish Engulfing (+1)
+      - Bearish Engulfing (-1)
+      - Hammer (+1)
+      - Shooting Star (-1)
+      - Doji (0)
+      - Morning Star (+1)
+      - Evening Star (-1)
+    Adds 'pattern_name' and 'pattern_signal' columns to df.
+    """
+    out = df.copy()
+    patterns = []
+    pattern_signals = []
+
+    opens = out["open"].values
+    highs = out["high"].values
+    lows = out["low"].values
+    closes = out["close"].values
+    n = len(out)
+
+    for i in range(n):
+        o, h, l, c = opens[i], highs[i], lows[i], closes[i]
+        body = abs(c - o)
+        total_range = h - l
+        if total_range == 0:
+            patterns.append("")
+            pattern_signals.append(0)
+            continue
+
+        upper_wick = h - max(o, c)
+        lower_wick = min(o, c) - l
+
+        pat = ""
+        sig = 0
+
+        # 1. Doji (Indecision)
+        if body <= (total_range * 0.10):
+            pat = "Doji"
+            sig = 0
+
+        # 2. Hammer (Bullish Reversal)
+        elif lower_wick >= (2.0 * body) and upper_wick <= (0.5 * body) and (body / total_range) <= 0.35:
+            pat = "Hammer"
+            sig = 1
+
+        # 3. Shooting Star (Bearish Reversal)
+        elif upper_wick >= (2.0 * body) and lower_wick <= (0.5 * body) and (body / total_range) <= 0.35:
+            pat = "Shooting Star"
+            sig = -1
+
+        # 4. Multi-candle patterns (requires previous candles)
+        if i >= 1 and pat == "":
+            po, pc = opens[i - 1], closes[i - 1]
+            p_is_bear = pc < po
+            p_is_bull = pc > po
+
+            # Bullish Engulfing
+            if p_is_bear and (c > o) and (c >= po) and (o <= pc):
+                pat = "Bullish Engulfing"
+                sig = 1
+            # Bearish Engulfing
+            elif p_is_bull and (c < o) and (c <= po) and (o >= pc):
+                pat = "Bearish Engulfing"
+                sig = -1
+
+        # 5. Three-candle patterns (Morning Star / Evening Star)
+        if i >= 2 and pat == "":
+            p2o, p2c = opens[i - 2], closes[i - 2]
+            p1o, p1c = opens[i - 1], closes[i - 1]
+
+            p2_body = abs(p2c - p2o)
+            p1_body = abs(p1c - p1o)
+
+            # Morning Star
+            if (p2c < p2o) and (p1_body < p2_body * 0.4) and (c > o) and (c >= (p2o + p2c) / 2.0):
+                pat = "Morning Star"
+                sig = 1
+            # Evening Star
+            elif (p2c > p2o) and (p1_body < p2_body * 0.4) and (c < o) and (c <= (p2o + p2c) / 2.0):
+                pat = "Evening Star"
+                sig = -1
+
+        patterns.append(pat)
+        pattern_signals.append(sig)
+
+    out["pattern_name"] = patterns
+    out["pattern_signal"] = pattern_signals
+    return out
 
 
 def resample_candles(df: pd.DataFrame, timeframe: str) -> pd.DataFrame:

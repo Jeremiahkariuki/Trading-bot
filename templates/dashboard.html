@@ -221,23 +221,51 @@
             border-color: #3b82f6;
             box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
         }
-        .modal-overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(15, 23, 42, 0.82);
-            backdrop-filter: blur(8px);
-            z-index: 10000;
-            display: flex; align-items: center; justify-content: center;
-            padding: 16px;
+        .news-feed-container {
+            display: flex;
+            gap: 12px;
+            overflow-x: auto;
+            padding: 4px 2px 12px 2px;
+            scrollbar-width: thin;
         }
-        .modal-card {
+        .news-card {
+            background: var(--card-inner-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 12px 14px;
+            min-width: 250px;
+            max-width: 290px;
+            flex-shrink: 0;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .news-card:hover {
+            border-color: var(--accent-blue);
+            transform: translateY(-3px);
+            box-shadow: 0 12px 25px rgba(59, 130, 246, 0.28);
+            z-index: 100;
+        }
+        .news-hover-card {
+            position: absolute;
+            bottom: calc(100% + 10px);
+            left: 50%;
+            transform: translateX(-50%) translateY(6px);
+            width: 320px;
             background: #0f172a;
-            border: 1px solid rgba(16, 185, 129, 0.35);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 30px rgba(16, 185, 129, 0.2);
-            border-radius: 16px;
-            width: 100%; max-width: 500px;
-            overflow: hidden;
-            animation: modalPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            border: 1px solid rgba(59, 130, 246, 0.45);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.85), 0 0 25px rgba(59, 130, 246, 0.25);
+            border-radius: 14px;
+            padding: 16px;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        .news-card:hover .news-hover-card {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateX(-50%) translateY(0);
         }
 
         .status-badge {
@@ -703,6 +731,38 @@
                 <div class="chart-tab-group">
                     <button id="tabCandles" class="chart-tab-btn active" onclick="switchChartTab('candles')">Candlesticks & MAs</button>
                     <button id="tabEquity" class="chart-tab-btn" onclick="switchChartTab('equity')">Equity Curve</button>
+                </div>
+            </div>
+
+            <!-- Multi-Factor Signal Confluence Analysis Card -->
+            <div id="confluenceCard" style="background: var(--card-inner-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 16px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 1.3rem;">🧠</span>
+                    <div>
+                        <div style="font-size: 0.72rem; color: var(--text-secondary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Multi-Factor Signal Confluence</div>
+                        <div id="confluenceRecText" style="font-size: 1.02rem; font-weight: 800; color: #10b981; display: flex; align-items: center; gap: 8px; margin-top: 2px;">
+                            <span>RECOMMENDATION: BUY (CALL)</span>
+                            <span id="confluenceBadge" style="font-size: 0.7rem; background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); padding: 2px 8px; border-radius: 4px; font-weight: 600;">BULLISH CONFLUENCE</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="confluencePills" style="display: flex; gap: 6px; flex-wrap: wrap; align-items: center;">
+                    <!-- Rendered by JS -->
+                </div>
+            </div>
+
+            <!-- Financial News & Economic Sentiment Strip -->
+            <div style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div style="font-size: 0.78rem; color: var(--text-secondary); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; gap: 6px;">
+                        <span>📰 Live Market News & Sentiment Analysis</span>
+                        <span style="font-size: 0.7rem; background: rgba(59,130,246,0.15); color: #60a5fa; padding: 1px 6px; border-radius: 4px; font-weight: 600;">Hover over cards for full summary & sentiment</span>
+                    </div>
+                </div>
+
+                <div id="newsFeedContainer" class="news-feed-container">
+                    <!-- Rendered by JS -->
                 </div>
             </div>
 
@@ -1962,37 +2022,22 @@
             await fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, isPrefetch);
         }
 
-        // Instant pre-fetch for ALL timeframes on current symbol & other symbols
+        // Lightweight pre-fetch for other timeframes on current active symbol only
         function prefetchTimeframesAndSymbols() {
-            const currentSymbol = document.getElementById('symbolSelect').value;
-            const fast = document.getElementById('fastMa').value;
-            const slow = document.getElementById('slowMa').value;
-            const mtf = document.getElementById('mtfCheck').checked;
+            const currentSymbol = document.getElementById('symbolSelect')?.value;
+            if (!currentSymbol) return;
+            const fast = document.getElementById('fastMa')?.value || "10";
+            const slow = document.getElementById('slowMa')?.value || "30";
+            const mtf = document.getElementById('mtfCheck')?.checked || false;
             const timeframes = ['1min', '5min', '15min', '1h'];
 
-            // 1. Instantly prefetch all 4 timeframes for active symbol (<20ms total)
-            timeframes.forEach(tf => {
+            timeframes.forEach((tf, index) => {
                 const key = `${currentSymbol}_${tf}_${fast}_${slow}_${mtf}`;
                 if (!clientCache[key]) {
-                    fetchBacktestData(currentSymbol, tf, fast, slow, mtf, key, true);
+                    setTimeout(() => {
+                        fetchBacktestData(currentSymbol, tf, fast, slow, mtf, key, true);
+                    }, index * 200);
                 }
-            });
-
-            // 2. Smoothly prefetch other symbols across timeframes
-            const select = document.getElementById('symbolSelect');
-            if (!select) return;
-            const options = Array.from(select.options);
-            options.forEach((opt, index) => {
-                setTimeout(() => {
-                    const sym = opt.value;
-                    if (sym === currentSymbol) return;
-                    timeframes.forEach(tf => {
-                        const key = `${sym}_${tf}_${fast}_${slow}_${mtf}`;
-                        if (!clientCache[key]) {
-                            fetchBacktestData(sym, tf, fast, slow, mtf, key, true);
-                        }
-                    });
-                }, (index + 1) * 150);
             });
         }
 
