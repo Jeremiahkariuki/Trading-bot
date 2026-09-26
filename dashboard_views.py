@@ -363,12 +363,19 @@ def api_backtest_run_view(request):
 
             time_val = epoch_val if epoch_val is not None else str(idx).split('.')[0]
 
+            fast_val = float(row["fast_ma"]) if ("fast_ma" in row and not pd.isna(row["fast_ma"])) else None
+            slow_val = float(row["slow_ma"]) if ("slow_ma" in row and not pd.isna(row["slow_ma"])) else None
+            sig_val = int(row["signal"]) if ("signal" in row and not pd.isna(row["signal"])) else 0
+
             candle_obj = {
                 "time": time_val,
                 "open": round(float(row["open"]), precision),
                 "high": round(float(row["high"]), precision),
                 "low": round(float(row["low"]), precision),
                 "close": round(float(row["close"]), precision),
+                "signal": sig_val,
+                "fast_ma": round(fast_val, precision) if fast_val is not None else None,
+                "slow_ma": round(slow_val, precision) if slow_val is not None else None,
             }
             if "pattern_name" in row and row["pattern_name"]:
                 candle_obj["pattern_name"] = str(row["pattern_name"])

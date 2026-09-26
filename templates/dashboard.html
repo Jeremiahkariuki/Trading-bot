@@ -1177,21 +1177,41 @@
                             text: '⚡ SELL',
                             size: 2,
                         });
+                    } else if (c.pattern_signal === 1) {
+                        markers.push({
+                            time: time,
+                            position: 'belowBar',
+                            color: '#34d399',
+                            shape: 'arrowUp',
+                            text: `🕯️ ${c.pattern_name || 'BUY'}`,
+                            size: 1.5,
+                        });
+                    } else if (c.pattern_signal === -1) {
+                        markers.push({
+                            time: time,
+                            position: 'aboveBar',
+                            color: '#f87171',
+                            shape: 'arrowDown',
+                            text: `🕯️ ${c.pattern_name || 'SELL'}`,
+                            size: 1.5,
+                        });
                     }
                 });
 
-                // Deduplicate by time for Lightweight Charts
+                // Deduplicate and sort series & markers by time ascending for Lightweight Charts
                 const uniqueCandles = Array.from(new Map(candlesFormatted.map(item => [item.time, item])).values())
                     .sort((a, b) => a.time - b.time);
                 const uniqueFastMa = Array.from(new Map(fastMaFormatted.map(item => [item.time, item])).values())
                     .sort((a, b) => a.time - b.time);
                 const uniqueSlowMa = Array.from(new Map(slowMaFormatted.map(item => [item.time, item])).values())
                     .sort((a, b) => a.time - b.time);
+                const uniqueMarkers = Array.from(new Map(markers.map(item => [item.time, item])).values())
+                    .sort((a, b) => a.time - b.time);
 
                 candlestickSeries.setData(uniqueCandles);
                 fastMaSeries.setData(uniqueFastMa);
                 slowMaSeries.setData(uniqueSlowMa);
-                candlestickSeries.setMarkers(markers);
+                candlestickSeries.setMarkers(uniqueMarkers);
 
                 if (uniqueCandles.length > 50) {
                     candleChart.timeScale().setVisibleLogicalRange({
