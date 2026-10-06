@@ -12,6 +12,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'accounts.apps.AccountsConfig',
 ]
 
 MIDDLEWARE = [
@@ -67,4 +68,9 @@ SESSION_SAVE_EVERY_REQUEST = True
 # ── Login Credentials (change these!) ────────────────────────────────────────
 LOGIN_USERNAME = 'admin'
 LOGIN_PASSWORD = 'WallStreet5@2024!'  # Change this before deploying
+
+# ── Registration Security ──────────────────────────────────────────────────────────
+REGISTRATION_CODE = 'WS5-TRADER-2024'  # Invite code required to register
+PASSWORD_MIN_LENGTH = 8
+MAX_USERS = 10   # Max registered accounts allowed
 

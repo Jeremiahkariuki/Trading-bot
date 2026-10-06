@@ -5,6 +5,7 @@ Views and REST API endpoints for the Trading Bot Django Dashboard.
 """
 
 import json
+import re
 import time
 import hashlib
 from datetime import datetime, timedelta
@@ -77,11 +78,27 @@ def login_view(request):
         correct_user = getattr(settings, 'LOGIN_USERNAME', 'admin')
         correct_pass = getattr(settings, 'LOGIN_PASSWORD', 'admin')
 
+        # Check admin credentials or registered TraderAccount users in database
+        auth_success = False
+        display_user = username
+
         if username == correct_user and password == correct_pass:
+            auth_success = True
+        else:
+            try:
+                from accounts.models import TraderAccount
+                user_obj = TraderAccount.authenticate(username, password)
+                if user_obj:
+                    auth_success = True
+                    display_user = user_obj.username
+            except Exception:
+                pass
+
+        if auth_success:
             # Successful login
             LOGIN_ATTEMPTS[ip] = {'attempts': 0, 'locked_until': 0.0}
             request.session['authenticated'] = True
-            request.session['username'] = username
+            request.session['username'] = display_user
             request.session['login_time'] = now
             request.session.set_expiry(3600)  # 1 hour
             next_url = request.GET.get('next', '/')
@@ -141,6 +158,124 @@ def change_password_view(request):
         'success': success,
         'error': error,
     })
+
+# ── Register: Rate Limiting ─────────────────────────────────────────────────
+REGISTER_ATTEMPTS: dict = defaultdict(lambda: {'attempts': 0, 'locked_until': 0.0})
+MAX_REGISTER_ATTEMPTS = 3
+REGISTER_LOCKOUT_SECONDS = 3600  # 1 hour
+
+# Regex: username rules
+_USERNAME_RE = re.compile(r'^[a-zA-Z0-9_]{3,30}$')
+# Regex: basic email
+_EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+
+
+def _validate_password_strength(pw: str) -> list:
+    """Return list of unmet requirement strings, empty list = strong."""
+    issues = []
+    if len(pw) < getattr(settings, 'PASSWORD_MIN_LENGTH', 8):
+        issues.append(f'At least {getattr(settings, "PASSWORD_MIN_LENGTH", 8)} characters')
+    if not re.search(r'[A-Z]', pw):
+        issues.append('At least one uppercase letter')
+    if not re.search(r'[a-z]', pw):
+        issues.append('At least one lowercase letter')
+    if not re.search(r'[0-9]', pw):
+        issues.append('At least one number')
+    if not re.search(r'[^A-Za-z0-9]', pw):
+        issues.append('At least one special character (!@#$%...)')
+    return issues
+
+
+@require_http_methods(['GET', 'POST'])
+def register_view(request):
+    """New trader registration with invite code, rate limiting and full validation."""
+    if request.session.get('authenticated'):
+        return redirect('/')
+
+    from accounts.models import TraderAccount
+
+    ip = _get_client_ip(request)
+    attempt_data = REGISTER_ATTEMPTS[ip]
+    now = time.time()
+    error = None
+    success = None
+    locked = False
+    lockout_remaining = 0
+    form_data = {}  # re-populate form on error
+
+    if attempt_data['locked_until'] > now:
+        locked = True
+        lockout_remaining = int(attempt_data['locked_until'] - now)
+
+    if request.method == 'POST' and not locked:
+        username   = request.POST.get('username', '').strip()
+        email      = request.POST.get('email', '').strip().lower()
+        password   = request.POST.get('password', '')
+        confirm    = request.POST.get('confirm_password', '')
+        invite     = request.POST.get('invite_code', '').strip()
+        terms      = request.POST.get('terms', '')
+        form_data  = {'username': username, 'email': email}
+
+        correct_code = getattr(settings, 'REGISTRATION_CODE', '')
+        max_users    = getattr(settings, 'MAX_USERS', 10)
+
+        # ── Validations ────────────────────────────────────────────────────────────
+        if not invite:
+            error = 'Invite code is required to register.'
+        elif invite != correct_code:
+            attempt_data['attempts'] += 1
+            if attempt_data['attempts'] >= MAX_REGISTER_ATTEMPTS:
+                attempt_data['locked_until'] = now + REGISTER_LOCKOUT_SECONDS
+                locked = True
+                lockout_remaining = REGISTER_LOCKOUT_SECONDS
+                error = f'Too many invalid invite attempts. Try again in 1 hour.'
+            else:
+                remaining = MAX_REGISTER_ATTEMPTS - attempt_data['attempts']
+                error = f'Invalid invite code. {remaining} attempt(s) left.'
+        elif not username:
+            error = 'Username is required.'
+        elif not _USERNAME_RE.match(username):
+            error = 'Username: 3-30 chars, letters/numbers/underscore only.'
+        elif not email:
+            error = 'Email address is required.'
+        elif not _EMAIL_RE.match(email):
+            error = 'Enter a valid email address.'
+        elif not password:
+            error = 'Password is required.'
+        elif password != confirm:
+            error = 'Passwords do not match.'
+        elif pw_issues := _validate_password_strength(password):
+            error = 'Weak password — ' + ', '.join(pw_issues) + '.'
+        elif not terms:
+            error = 'You must accept the Terms of Service.'
+        elif TraderAccount.objects.filter(username__iexact=username).exists():
+            error = 'Username is already taken. Please choose another.'
+        elif TraderAccount.objects.filter(email__iexact=email).exists():
+            error = 'An account with this email already exists.'
+        elif TraderAccount.objects.count() >= max_users:
+            error = f'Registration is currently closed (max {max_users} accounts reached).'
+        else:
+            # All checks passed — create account
+            account = TraderAccount(username=username, email=email)
+            account.set_password(password)
+            account.save()
+            # Auto-login the new user
+            REGISTER_ATTEMPTS[ip] = {'attempts': 0, 'locked_until': 0.0}
+            request.session['authenticated'] = True
+            request.session['username'] = username
+            request.session['user_id'] = account.pk
+            request.session['login_time'] = now
+            request.session.set_expiry(3600)
+            return redirect('/?welcome=1')
+
+    return render(request, 'register.html', {
+        'error': error,
+        'success': success,
+        'locked': locked,
+        'lockout_remaining': lockout_remaining,
+        'form_data': form_data,
+    })
+
 
 # Global in-memory bot state for dashboard demonstration
 BOT_STATE = {
