@@ -5,10 +5,16 @@ Views and REST API endpoints for the Trading Bot Django Dashboard.
 """
 
 import json
-from datetime import datetime
-from django.shortcuts import render
-from django.http import JsonResponse
+import time
+import hashlib
+from datetime import datetime, timedelta
+from collections import defaultdict
+from django.conf import settings
+from django.shortcuts import render, redirect
+from django.http import JsonResponse, HttpResponseForbidden
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+from functools import wraps
 
 from deriv_client import fetch_candles_sync, SYMBOLS
 from strategy import MACrossoverStrategy, StrategyConfig, resample_candles
@@ -16,6 +22,125 @@ from backtest import Backtester, BacktestConfig
 from risk_manager import RiskManager, RiskConfig
 
 from bot_worker import TradingBotWorker
+
+# ── Auth: Rate Limiting State ─────────────────────────────────────────────────
+# { ip: {'attempts': int, 'locked_until': float, 'last_attempt': float} }
+LOGIN_ATTEMPTS: dict = defaultdict(lambda: {'attempts': 0, 'locked_until': 0.0})
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_SECONDS = 900  # 15 minutes
+
+
+def _hash_password(pw: str) -> str:
+    """Simple SHA-256 hash for password comparison."""
+    return hashlib.sha256(pw.encode()).hexdigest()
+
+
+def _get_client_ip(request) -> str:
+    """Extract real client IP, accounting for proxy headers."""
+    x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded:
+        return x_forwarded.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR', '0.0.0.0')
+
+
+def login_required(view_func):
+    """Decorator: redirect to /login/ if session not authenticated."""
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if not request.session.get('authenticated'):
+            return redirect('/login/?next=' + request.path)
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+
+@require_http_methods(['GET', 'POST'])
+def login_view(request):
+    """Login page with rate limiting, lockout, and session auth."""
+    if request.session.get('authenticated'):
+        return redirect('/')
+
+    ip = _get_client_ip(request)
+    attempt_data = LOGIN_ATTEMPTS[ip]
+    now = time.time()
+    error = None
+    locked = False
+    lockout_remaining = 0
+
+    # Check lockout
+    if attempt_data['locked_until'] > now:
+        locked = True
+        lockout_remaining = int(attempt_data['locked_until'] - now)
+
+    if request.method == 'POST' and not locked:
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        correct_user = getattr(settings, 'LOGIN_USERNAME', 'admin')
+        correct_pass = getattr(settings, 'LOGIN_PASSWORD', 'admin')
+
+        if username == correct_user and password == correct_pass:
+            # Successful login
+            LOGIN_ATTEMPTS[ip] = {'attempts': 0, 'locked_until': 0.0}
+            request.session['authenticated'] = True
+            request.session['username'] = username
+            request.session['login_time'] = now
+            request.session.set_expiry(3600)  # 1 hour
+            next_url = request.GET.get('next', '/')
+            return redirect(next_url if next_url.startswith('/') else '/')
+        else:
+            attempt_data['attempts'] += 1
+            if attempt_data['attempts'] >= MAX_LOGIN_ATTEMPTS:
+                attempt_data['locked_until'] = now + LOCKOUT_SECONDS
+                locked = True
+                lockout_remaining = LOCKOUT_SECONDS
+                error = f'Too many failed attempts. Account locked for {LOCKOUT_SECONDS // 60} minutes.'
+            else:
+                remaining = MAX_LOGIN_ATTEMPTS - attempt_data['attempts']
+                error = f'Invalid username or password. {remaining} attempt(s) remaining.'
+
+    return render(request, 'login.html', {
+        'error': error,
+        'locked': locked,
+        'lockout_remaining': lockout_remaining,
+        'attempts_left': max(0, MAX_LOGIN_ATTEMPTS - attempt_data['attempts']),
+    })
+
+
+def logout_view(request):
+    """Clear session and redirect to login."""
+    request.session.flush()
+    return redirect('/login/')
+
+
+@require_http_methods(['GET', 'POST'])
+def change_password_view(request):
+    """Allow changing the runtime login password."""
+    if not request.session.get('authenticated'):
+        return redirect('/login/')
+
+    success = None
+    error = None
+
+    if request.method == 'POST':
+        current = request.POST.get('current_password', '')
+        new_pw = request.POST.get('new_password', '')
+        confirm = request.POST.get('confirm_password', '')
+        correct_pass = getattr(settings, 'LOGIN_PASSWORD', 'admin')
+
+        if current != correct_pass:
+            error = 'Current password is incorrect.'
+        elif len(new_pw) < 8:
+            error = 'New password must be at least 8 characters.'
+        elif new_pw != confirm:
+            error = 'Passwords do not match.'
+        else:
+            settings.LOGIN_PASSWORD = new_pw
+            success = 'Password changed successfully!'
+
+    return render(request, 'login.html', {
+        'change_password_mode': True,
+        'success': success,
+        'error': error,
+    })
 
 # Global in-memory bot state for dashboard demonstration
 BOT_STATE = {
@@ -68,6 +193,7 @@ def favicon_view(request):
     return HttpResponse(CANDLESTICK_FAVICON_SVG, content_type="image/svg+xml")
 
 
+@login_required
 def index_view(request):
     """Renders main dashboard HTML page."""
     context = {

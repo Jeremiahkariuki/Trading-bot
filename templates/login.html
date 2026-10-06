@@ -1,0 +1,867 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Wall Street 5 Trading Bot — Secure Login" />
+    <title>Wall Street 5 — Secure Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <style>
+        /* ── Reset & Base ───────────────────────────────────────────────── */
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            height: 100%;
+            font-family: 'Inter', sans-serif;
+            background: #050d1a;
+            color: #e2e8f0;
+            overflow: hidden;
+        }
+
+        /* ── Animated Background ────────────────────────────────────────── */
+        .bg-scene {
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 60% at 20% 50%, rgba(6, 182, 212, 0.08) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 80% at 80% 20%, rgba(16, 185, 129, 0.06) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 50% at 50% 80%, rgba(59, 130, 246, 0.05) 0%, transparent 60%);
+            z-index: 0;
+        }
+
+        .grid-lines {
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(6, 182, 212, 0.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(6, 182, 212, 0.04) 1px, transparent 1px);
+            background-size: 48px 48px;
+            z-index: 0;
+            animation: gridShift 20s linear infinite;
+        }
+
+        @keyframes gridShift {
+            from {
+                background-position: 0 0;
+            }
+
+            to {
+                background-position: 48px 48px;
+            }
+        }
+
+        /* Floating candle shapes */
+        .floater {
+            position: fixed;
+            width: 4px;
+            border-radius: 2px;
+            opacity: 0.12;
+            animation: floatUp linear infinite;
+            z-index: 0;
+        }
+
+        @keyframes floatUp {
+            0% {
+                transform: translateY(110vh) scaleX(1);
+                opacity: 0;
+            }
+
+            10% {
+                opacity: 0.14;
+            }
+
+            90% {
+                opacity: 0.14;
+            }
+
+            100% {
+                transform: translateY(-10vh) scaleX(1);
+                opacity: 0;
+            }
+        }
+
+        /* ── Layout ─────────────────────────────────────────────────────── */
+        .page-center {
+            position: relative;
+            z-index: 10;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        /* ── Card ───────────────────────────────────────────────────────── */
+        .card {
+            width: 100%;
+            max-width: 440px;
+            background: rgba(10, 20, 40, 0.75);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: 24px;
+            padding: 40px 36px 32px;
+            box-shadow:
+                0 0 0 1px rgba(6, 182, 212, 0.08),
+                0 0 60px rgba(6, 182, 212, 0.12),
+                0 32px 80px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            animation: cardIn 0.5s cubic-bezier(.34, 1.56, .64, 1) both;
+        }
+
+        @keyframes cardIn {
+            from {
+                opacity: 0;
+                transform: translateY(28px) scale(0.96);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        /* ── Logo ───────────────────────────────────────────────────────── */
+        .logo-wrap {
+            text-align: center;
+            margin-bottom: 28px;
+        }
+
+        .logo-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            height: 64px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(16, 185, 129, 0.2));
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            margin-bottom: 14px;
+            box-shadow: 0 0 24px rgba(6, 182, 212, 0.2);
+        }
+
+        .logo-icon svg {
+            width: 32px;
+            height: 32px;
+        }
+
+        .logo-title {
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(90deg, #06b6d4, #10b981);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo-sub {
+            font-size: 13px;
+            color: #64748b;
+            margin-top: 4px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        /* ── Section Title ──────────────────────────────────────────────── */
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #f1f5f9;
+            margin-bottom: 22px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        /* ── Form Fields ────────────────────────────────────────────────── */
+        .field {
+            margin-bottom: 18px;
+        }
+
+        .field label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #94a3b8;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .input-wrap {
+            position: relative;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #475569;
+            pointer-events: none;
+        }
+
+        .input-wrap input {
+            width: 100%;
+            padding: 13px 44px 13px 42px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: #f1f5f9;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+
+        .input-wrap input::placeholder {
+            color: #334155;
+        }
+
+        .input-wrap input:focus {
+            border-color: rgba(6, 182, 212, 0.5);
+            box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.12);
+            background: rgba(6, 182, 212, 0.04);
+        }
+
+        .input-wrap input.error-input {
+            border-color: rgba(239, 68, 68, 0.5);
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+        }
+
+        .toggle-pw {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #475569;
+            cursor: pointer;
+            padding: 2px;
+            display: flex;
+            align-items: center;
+            transition: color 0.2s;
+        }
+
+        .toggle-pw:hover {
+            color: #06b6d4;
+        }
+
+        /* ── Password Strength ──────────────────────────────────────────── */
+        .strength-wrap {
+            margin-top: 8px;
+        }
+
+        .strength-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #475569;
+            margin-bottom: 5px;
+        }
+
+        .strength-label span {
+            transition: color 0.3s;
+        }
+
+        .strength-bar {
+            display: flex;
+            gap: 4px;
+        }
+
+        .strength-seg {
+            flex: 1;
+            height: 3px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.08);
+            transition: background 0.3s;
+        }
+
+        .strength-seg.s1 {
+            background: #ef4444;
+        }
+
+        .strength-seg.s2 {
+            background: #f97316;
+        }
+
+        .strength-seg.s3 {
+            background: #eab308;
+        }
+
+        .strength-seg.s4 {
+            background: #10b981;
+        }
+
+        /* ── Alert Banners ──────────────────────────────────────────────── */
+        .alert {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            margin-bottom: 18px;
+            line-height: 1.4;
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.25);
+            color: #fca5a5;
+        }
+
+        .alert-success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+            color: #6ee7b7;
+        }
+
+        .alert-warning {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+            color: #fcd34d;
+        }
+
+        .alert svg {
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        /* ── Lockout Countdown ──────────────────────────────────────────── */
+        .lockout-badge {
+            font-size: 22px;
+            font-weight: 800;
+            color: #f97316;
+            text-align: center;
+            letter-spacing: 2px;
+            margin: 4px 0;
+        }
+
+        /* ── Attempts Left ──────────────────────────────────────────────── */
+        .attempts-row {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+            margin-bottom: 14px;
+        }
+
+        .attempt-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+            transition: background 0.3s;
+        }
+
+        .attempt-dot.used {
+            background: #ef4444;
+        }
+
+        /* ── Submit Button ──────────────────────────────────────────────── */
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #0891b2, #059669);
+            color: #fff;
+            font-size: 15px;
+            font-weight: 700;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            letter-spacing: 0.3px;
+            box-shadow: 0 4px 24px rgba(8, 145, 178, 0.4);
+            transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-login::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent);
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .btn-login:hover:not(:disabled) {
+            opacity: 0.92;
+            transform: translateY(-1px);
+            box-shadow: 0 8px 32px rgba(8, 145, 178, 0.5);
+        }
+
+        .btn-login:hover:not(:disabled)::before {
+            opacity: 1;
+        }
+
+        .btn-login:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .btn-login:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* ── Links Row ──────────────────────────────────────────────────── */
+        .links-row {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 16px;
+        }
+
+        .links-row a {
+            font-size: 12px;
+            color: #06b6d4;
+            text-decoration: none;
+            transition: color 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .links-row a:hover {
+            color: #67e8f9;
+            text-decoration: underline;
+        }
+
+        /* ── Security Badges ────────────────────────────────────────────── */
+        .security-row {
+            display: flex;
+            justify-content: center;
+            gap: 18px;
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .badge {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            font-size: 10px;
+            color: #475569;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+        }
+
+        .badge svg {
+            color: #06b6d4;
+            opacity: 0.7;
+        }
+
+        /* ── Session Info Bar ───────────────────────────────────────────── */
+        .session-notice {
+            text-align: center;
+            font-size: 11px;
+            color: #334155;
+            margin-top: 10px;
+        }
+
+        /* ── Spinner ────────────────────────────────────────────────────── */
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            vertical-align: middle;
+            margin-right: 6px;
+        }
+
+        /* ── Responsive ─────────────────────────────────────────────────── */
+        @media (max-width: 480px) {
+            .card {
+                padding: 28px 20px 24px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bg-scene"></div>
+    <div class="grid-lines"></div>
+
+    <!-- Floating candle decorations -->
+    <div id="floaters"></div>
+
+    <div class="page-center">
+        <div class="card">
+
+            <!-- Logo -->
+            <div class="logo-wrap">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 32 32" fill="none">
+                        <rect x="5" y="10" width="5" height="12" rx="1" fill="#06b6d4" />
+                        <line x1="7.5" y1="6" x2="7.5" y2="10" stroke="#06b6d4" stroke-width="1.5" />
+                        <line x1="7.5" y1="22" x2="7.5" y2="26" stroke="#06b6d4" stroke-width="1.5" />
+                        <rect x="13.5" y="5" width="5" height="14" rx="1" fill="#10b981" />
+                        <line x1="16" y1="2" x2="16" y2="5" stroke="#10b981" stroke-width="1.5" />
+                        <line x1="16" y1="19" x2="16" y2="22" stroke="#10b981" stroke-width="1.5" />
+                        <rect x="22" y="13" width="5" height="9" rx="1" fill="#06b6d4" />
+                        <line x1="24.5" y1="9" x2="24.5" y2="13" stroke="#06b6d4" stroke-width="1.5" />
+                        <line x1="24.5" y1="22" x2="24.5" y2="26" stroke="#06b6d4" stroke-width="1.5" />
+                    </svg>
+                </div>
+                <div class="logo-title">WALL STREET 5</div>
+                <div class="logo-sub">Trading Intelligence Platform</div>
+            </div>
+
+            {% if change_password_mode %}
+            <!-- ══ Change Password Mode ══ -->
+            <div class="section-title"> Change Password</div>
+
+            {% if success %}
+            <div class="alert alert-success">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+                {{ success }} <a href="/" style="color:#10b981;text-decoration:underline;margin-left:6px;">Go to
+                    Dashboard →</a>
+            </div>
+            {% endif %}
+
+            {% if error %}
+            <div class="alert alert-error">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <form method="POST" id="changePwForm" autocomplete="off">
+                {% csrf_token %}
+                <div class="field">
+                    <label>Current Password</label>
+                    <div class="input-wrap">
+                        <span class="input-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="11" width="18" height="11" rx="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg></span>
+                        <input type="password" name="current_password" id="currentPw"
+                            placeholder="Enter current password" required />
+                        <button type="button" class="toggle-pw" onclick="togglePw('currentPw', this)" tabindex="-1">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>New Password</label>
+                    <div class="input-wrap">
+                        <span class="input-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="11" width="18" height="11" rx="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg></span>
+                        <input type="password" name="new_password" id="newPw" placeholder="Min 8 characters" required
+                            oninput="checkStrength(this.value)" />
+                        <button type="button" class="toggle-pw" onclick="togglePw('newPw', this)" tabindex="-1">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="strength-wrap">
+                        <div class="strength-label"><span>Password strength</span><span id="strengthText">—</span></div>
+                        <div class="strength-bar">
+                            <div class="strength-seg" id="seg1"></div>
+                            <div class="strength-seg" id="seg2"></div>
+                            <div class="strength-seg" id="seg3"></div>
+                            <div class="strength-seg" id="seg4"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>Confirm New Password</label>
+                    <div class="input-wrap">
+                        <span class="input-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2">
+                                <rect x="3" y="11" width="18" height="11" rx="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg></span>
+                        <input type="password" name="confirm_password" id="confirmPw"
+                            placeholder="Re-enter new password" required />
+                    </div>
+                </div>
+                <button type="submit" class="btn-login" id="submitBtn">Update Password</button>
+            </form>
+            <div class="links-row">
+                <a href="/"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2">
+                        <polyline points="15 18 9 12 15 6" />
+                    </svg> Back to Dashboard</a>
+                <a href="/logout/"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                        <polyline points="16 17 21 12 16 7" />
+                        <line x1="21" y1="12" x2="9" y2="12" />
+                    </svg> Logout</a>
+            </div>
+
+            {% else %}
+            <!-- ══ Login Mode ══ -->
+            <div class="section-title"> Secure Login</div>
+
+            {% if locked %}
+            <div class="alert alert-warning">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path
+                        d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <div>
+                    <strong>Account Locked.</strong> Too many failed attempts.<br>
+                    Try again in: <span id="countdown" class="lockout-badge">{{ lockout_remaining }}s</span>
+                </div>
+            </div>
+            {% elif error %}
+            <div class="alert alert-error">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <!-- Attempt dots -->
+            {% if not locked %}
+            <div class="attempts-row" id="attemptDots">
+                {% for i in "12345" %}
+                <div class="attempt-dot {% if forloop.counter > attempts_left %}used{% endif %}"></div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <form method="POST" id="loginForm" autocomplete="off">
+                {% csrf_token %}
+                <div class="field">
+                    <label>Username</label>
+                    <div class="input-wrap">
+                        <span class="input-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                <circle cx="12" cy="7" r="4" />
+                            </svg>
+                        </span>
+                        <input type="text" name="username" id="usernameField" placeholder="Enter username"
+                            autocomplete="username" {% if locked %}disabled{% endif %} {% if error %}class="error-input"
+                            {% endif %} required autofocus />
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label>Password</label>
+                    <div class="input-wrap">
+                        <span class="input-icon">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <rect x="3" y="11" width="18" height="11" rx="2" />
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                            </svg>
+                        </span>
+                        <input type="password" name="password" id="passwordField" placeholder="Enter password"
+                            autocomplete="current-password" {% if locked %}disabled{% endif %} {% if error
+                            %}class="error-input" {% endif %} required />
+                        <button type="button" class="toggle-pw" onclick="togglePw('passwordField', this)" tabindex="-1">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="strength-wrap">
+                        <div class="strength-label"><span>Password strength</span><span id="strengthText">—</span></div>
+                        <div class="strength-bar">
+                            <div class="strength-seg" id="seg1"></div>
+                            <div class="strength-seg" id="seg2"></div>
+                            <div class="strength-seg" id="seg3"></div>
+                            <div class="strength-seg" id="seg4"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-login" id="submitBtn" {% if locked %}disabled{% endif %}>
+                    Login to Dashboard
+                </button>
+            </form>
+
+            <div class="links-row">
+                <a href="/change-password/">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                    Change Password
+                </a>
+            </div>
+            {% endif %}
+
+            <!-- Security Badges -->
+            <div class="security-row">
+                <div class="badge">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                    CSRF Guard
+                </div>
+                <div class="badge">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                    Rate Limited
+                </div>
+                <div class="badge">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                    </svg>
+                    Session 1hr
+                </div>
+                <div class="badge">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 20V10" />
+                        <path d="M12 20V4" />
+                        <path d="M6 20v-6" />
+                    </svg>
+                    IP Tracked
+                </div>
+            </div>
+            <div class="session-notice">Session expires after 1 hour of inactivity</div>
+        </div>
+    </div>
+
+    <script>
+        // ── Floating candle backgrounds ───────────────────────────────────
+        (function () {
+            const container = document.getElementById('floaters');
+            const colors = ['#06b6d4', '#10b981', '#3b82f6', '#f59e0b'];
+            for (let i = 0; i < 18; i++) {
+                const el = document.createElement('div');
+                el.className = 'floater';
+                const h = 20 + Math.random() * 60;
+                el.style.cssText = `
+                    left: ${Math.random() * 100}%;
+                    width: ${3 + Math.random() * 4}px;
+                    height: ${h}px;
+                    background: ${colors[Math.floor(Math.random() * colors.length)]};
+                    animation-duration: ${8 + Math.random() * 14}s;
+                    animation-delay: ${-Math.random() * 16}s;
+                `;
+                container.appendChild(el);
+            }
+        })();
+
+        // ── Toggle password visibility ────────────────────────────────────
+        function togglePw(fieldId, btn) {
+            const field = document.getElementById(fieldId);
+            const isText = field.type === 'text';
+            field.type = isText ? 'password' : 'text';
+            btn.innerHTML = isText
+                ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
+                : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+            btn.style.color = isText ? '#475569' : '#06b6d4';
+        }
+
+        // ── Password Strength Meter ───────────────────────────────────────
+        function checkStrength(pw) {
+            let score = 0;
+            if (pw.length >= 8) score++;
+            if (pw.length >= 12) score++;
+            if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+            if (/[0-9]/.test(pw)) score++;
+            if (/[^A-Za-z0-9]/.test(pw)) score++;
+            score = Math.min(score, 4);
+
+            const labels = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+            const colors = ['', '#ef4444', '#f97316', '#eab308', '#10b981'];
+            const textEl = document.getElementById('strengthText');
+            if (textEl) {
+                textEl.textContent = pw.length ? labels[score] : '—';
+                textEl.style.color = pw.length ? colors[score] : '#475569';
+            }
+            for (let i = 1; i <= 4; i++) {
+                const seg = document.getElementById('seg' + i);
+                if (seg) {
+                    seg.className = 'strength-seg';
+                    if (i <= score) seg.classList.add('s' + score);
+                }
+            }
+        }
+
+        // Wire up to login password field if present
+        const pwField = document.getElementById('passwordField');
+        if (pwField) pwField.addEventListener('input', () => checkStrength(pwField.value));
+
+        // ── Lockout Countdown Timer ───────────────────────────────────────
+        const cdEl = document.getElementById('countdown');
+        if (cdEl) {
+            let secs = parseInt(cdEl.textContent) || 0;
+            const timer = setInterval(() => {
+                secs--;
+                if (secs <= 0) {
+                    clearInterval(timer);
+                    cdEl.textContent = '0s';
+                    location.reload();
+                } else {
+                    const m = Math.floor(secs / 60);
+                    const s = secs % 60;
+                    cdEl.textContent = m > 0 ? `${m}m ${s}s` : `${s}s`;
+                }
+            }, 1000);
+        }
+
+        // ── Form loading spinner ──────────────────────────────────────────
+        const forms = document.querySelectorAll('#loginForm, #changePwForm');
+        forms.forEach(form => {
+            form.addEventListener('submit', () => {
+                const btn = form.querySelector('.btn-login');
+                if (btn && !btn.disabled) {
+                    btn.innerHTML = '<span class="spinner"></span>Verifying…';
+                    btn.disabled = true;
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>

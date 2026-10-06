@@ -2,6 +2,9 @@ from django.urls import path
 from dashboard_views import (
     index_view,
     favicon_view,
+    login_view,
+    logout_view,
+    change_password_view,
     api_status_view,
     api_toggle_view,
     api_config_view,
@@ -12,6 +15,9 @@ from dashboard_views import (
 
 urlpatterns = [
     path('', index_view, name='index'),
+    path('login/', login_view, name='login'),
+    path('logout/', logout_view, name='logout'),
+    path('change-password/', change_password_view, name='change_password'),
     path('favicon.ico', favicon_view, name='favicon'),
     path('api/status/', api_status_view, name='api_status'),
     path('api/toggle/', api_toggle_view, name='api_toggle'),
@@ -20,4 +26,5 @@ urlpatterns = [
     path('api/reset_balance/', api_reset_balance_view, name='api_reset_balance'),
     path('api/manual_trade/', api_manual_trade_view, name='api_manual_trade'),
 ]
+
 
