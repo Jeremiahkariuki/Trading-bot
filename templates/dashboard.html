@@ -1165,7 +1165,7 @@
                             position: 'belowBar',
                             color: '#10b981',
                             shape: 'arrowUp',
-                            text: '⚡ BUY',
+                            text: 'BUY',
                             size: 2,
                         });
                     } else if (c.signal === -1) {
@@ -1174,7 +1174,7 @@
                             position: 'aboveBar',
                             color: '#ef4444',
                             shape: 'arrowDown',
-                            text: '⚡ SELL',
+                            text: 'SELL',
                             size: 2,
                         });
                     } else if (c.pattern_signal === 1) {
@@ -1183,7 +1183,7 @@
                             position: 'belowBar',
                             color: '#34d399',
                             shape: 'arrowUp',
-                            text: `🕯️ ${c.pattern_name || 'BUY'}`,
+                            text: `${c.pattern_name || 'BUY'}`,
                             size: 1.5,
                         });
                     } else if (c.pattern_signal === -1) {
@@ -1192,7 +1192,7 @@
                             position: 'aboveBar',
                             color: '#f87171',
                             shape: 'arrowDown',
-                            text: `🕯️ ${c.pattern_name || 'SELL'}`,
+                            text: `${c.pattern_name || 'SELL'}`,
                             size: 1.5,
                         });
                     }
