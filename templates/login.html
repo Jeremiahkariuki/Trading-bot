@@ -682,8 +682,7 @@
                             </svg>
                         </span>
                         <input type="text" name="username" id="usernameField" placeholder="Enter username"
-                            autocomplete="username" {% if locked %}disabled{% endif %} {% if error %}class="error-input"
-                            {% endif %} required autofocus />
+                            autocomplete="username" {% if locked %}disabled{% endif %} {% if error %}class="error-input"{% endif %} required autofocus />
                     </div>
                 </div>
 
@@ -698,8 +697,7 @@
                             </svg>
                         </span>
                         <input type="password" name="password" id="passwordField" placeholder="Enter password"
-                            autocomplete="current-password" {% if locked %}disabled{% endif %} {% if error
-                            %}class="error-input" {% endif %} required />
+                            autocomplete="current-password" {% if locked %}disabled{% endif %} {% if error %}class="error-input"{% endif %} required />
                         <button type="button" class="toggle-pw" onclick="togglePw('passwordField', this)" tabindex="-1">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                                 stroke-width="2">
