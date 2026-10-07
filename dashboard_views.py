@@ -128,6 +128,45 @@ def logout_view(request):
     return redirect('/login/')
 
 
+@login_required
+def profile_view(request):
+    """User profile page with account details, security settings, and logout action."""
+    username = request.session.get('username', 'admin')
+    user_info = {
+        'username': username,
+        'email': f'{username}@wallstreet5.com',
+        'is_admin': True,
+        'created_at': 'System Account',
+        'last_login': datetime.fromtimestamp(request.session.get('login_time', time.time())).strftime('%Y-%m-%d %H:%M:%S'),
+        'login_count': '1',
+        'is_db_user': False,
+    }
+
+    try:
+        from accounts.models import TraderAccount
+        acc = TraderAccount.objects.filter(username__iexact=username).first()
+        if acc:
+            user_info['username'] = acc.username
+            user_info['email'] = acc.email
+            user_info['is_admin'] = acc.is_admin
+            user_info['created_at'] = acc.created_at.strftime('%Y-%m-%d %H:%M:%S')
+            user_info['last_login'] = acc.last_login.strftime('%Y-%m-%d %H:%M:%S') if acc.last_login else 'Just now'
+            user_info['login_count'] = acc.login_count
+            user_info['is_db_user'] = True
+    except Exception:
+        pass
+
+    deriv_token = BOT_STATE.get('api_token', '') if 'BOT_STATE' in globals() else ''
+    masked_token = (deriv_token[:4] + '...' + deriv_token[-4:]) if len(deriv_token) >= 8 else ('Configured' if deriv_token else 'Not Set (Demo/Paper)')
+
+    return render(request, 'profile.html', {
+        'user_info': user_info,
+        'bot_state': BOT_STATE if 'BOT_STATE' in globals() else {},
+        'masked_token': masked_token,
+        'ip_address': _get_client_ip(request),
+    })
+
+
 @require_http_methods(['GET', 'POST'])
 def change_password_view(request):
     """Allow changing the runtime login password."""
