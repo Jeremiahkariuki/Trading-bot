@@ -39,9 +39,10 @@ class TradingBotWorker:
     MA trend direction so the dashboard always shows fresh activity.
     """
 
-    def __init__(self, bot_state: Dict[str, Any], risk_mgr: RiskManager):
+    def __init__(self, bot_state: Dict[str, Any], risk_mgr: RiskManager, save_callback=None):
         self.bot_state = bot_state
         self.risk_mgr = risk_mgr
+        self.save_callback = save_callback
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self.last_candle_timestamp = None
@@ -214,6 +215,12 @@ class TradingBotWorker:
         self.bot_state["daily_pnl"] = dpnl
         self.bot_state["daily_pnl_pct"] = round((dpnl / initial) * 100, 2) if initial > 0 else 0.0
 
+        if self.save_callback:
+            try:
+                self.save_callback()
+            except Exception:
+                pass
+
     def execute_manual_trade(self, direction: str = "CALL", stake: Optional[float] = None, duration_seconds: Optional[int] = None) -> Dict[str, Any]:
         """
         Executes a manual test trade instantly so the user can test floating P&L and dynamic balance updates.
@@ -260,12 +267,20 @@ class TradingBotWorker:
 
         live_trades = self.bot_state.setdefault("live_trades", [])
         live_trades.insert(0, trade_entry)
+        if len(live_trades) > 500:
+            self.bot_state["live_trades"] = live_trades[:500]
+
         self.log(
             f"⚡ Manual {direction} placed on {symbol} @ {entry_price:.4f} "
             f"(Stake: ${stake:.2f}, Duration: {duration_seconds}s) | Cash: ${self.bot_state['balance']:.2f}"
         )
 
         self.evaluate_open_trades(entry_price)
+        if self.save_callback:
+            try:
+                self.save_callback()
+            except Exception:
+                pass
         return {
             "status": "success",
             "trade": trade_entry,
@@ -314,15 +329,20 @@ class TradingBotWorker:
         live_trades = self.bot_state.setdefault("live_trades", [])
         live_trades.insert(0, trade_entry)
 
-        # Keep max 50 trade records
-        if len(live_trades) > 50:
-            self.bot_state["live_trades"] = live_trades[:50]
+        # Keep max 500 trade records
+        if len(live_trades) > 500:
+            self.bot_state["live_trades"] = live_trades[:500]
 
         self.log(
             f"📈 BOT ORDER [{contract_type}] — {signal_reason} | {symbol} @ {price:.4f} | "
             f"Stake: ${stake:.2f} | Cash: ${self.bot_state['balance']:.2f} | ID: {contract_id}"
         )
         self.evaluate_open_trades(price)
+        if self.save_callback:
+            try:
+                self.save_callback()
+            except Exception:
+                pass
 
     def _run_loop(self):
         while not self._stop_event.is_set() and self.bot_state.get("running", False):

@@ -105,7 +105,14 @@ async def fetch_candles(
 import time
 
 _CANDLE_CACHE = {}
-_CACHE_TTL_SECONDS = 3
+_CACHE_TTL_BY_GRANULARITY = {
+    60: 5,       # 1-min  → 5s
+    300: 15,     # 5-min  → 15s
+    900: 30,     # 15-min → 30s
+    3600: 60,    # 1-hour → 60s
+    14400: 120,  # 4-hour → 120s
+    86400: 300,  # 1-day  → 300s
+}
 
 
 def generate_fallback_candles(symbol: str = "R_75", granularity_seconds: int = 60, count: int = 300) -> pd.DataFrame:
@@ -116,6 +123,7 @@ def generate_fallback_candles(symbol: str = "R_75", granularity_seconds: int = 6
     import numpy as np
     from datetime import datetime, timedelta, timezone
 
+    count = max(count, 300)
     now = datetime.now(timezone.utc)
     # Align end of series to current time
     start_time = now - timedelta(seconds=granularity_seconds * (count - 1))
@@ -161,21 +169,22 @@ def generate_fallback_candles(symbol: str = "R_75", granularity_seconds: int = 6
 
 
 def fetch_candles_sync(*args, **kwargs) -> pd.DataFrame:
-    """Blocking convenience wrapper with 120s in-memory cache and automatic fallback."""
+    """Blocking convenience wrapper with adaptive in-memory cache and automatic fallback."""
     symbol = kwargs.get("symbol", args[0] if len(args) > 0 else "R_75")
     granularity = kwargs.get("granularity_seconds", args[1] if len(args) > 1 else 60)
-    count = kwargs.get("count", args[2] if len(args) > 2 else 500)
+    count = max(kwargs.get("count", args[2] if len(args) > 2 else 300), 300)
 
     cache_key = (symbol, granularity)
+    ttl = _CACHE_TTL_BY_GRANULARITY.get(granularity, 5)
     now = time.time()
     if cache_key in _CANDLE_CACHE:
         cached_df, timestamp = _CANDLE_CACHE[cache_key]
-        if now - timestamp < _CACHE_TTL_SECONDS and len(cached_df) >= 10:
+        if now - timestamp < ttl and len(cached_df) >= 30:
             return cached_df.copy()
 
     try:
         df = asyncio.run(fetch_candles(symbol=symbol, granularity_seconds=granularity, count=count))
-        if df is not None and not df.empty:
+        if df is not None and len(df) >= 30:
             _CANDLE_CACHE[cache_key] = (df, now)
             return df.copy()
     except Exception as e:

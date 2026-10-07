@@ -8,7 +8,8 @@ import json
 import re
 import time
 import hashlib
-from datetime import datetime, timedelta
+from pathlib import Path
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 from django.conf import settings
 from django.shortcuts import render, redirect
@@ -185,12 +186,13 @@ def profile_view(request):
         'profile_image': profile_img,
     }
 
-    deriv_token = BOT_STATE.get('api_token', '') if 'BOT_STATE' in globals() else ''
+    user_bot_state, _, _, _ = get_user_bot_context(username)
+    deriv_token = user_bot_state.get('api_token', '')
     masked_token = (deriv_token[:4] + '...' + deriv_token[-4:]) if len(deriv_token) >= 8 else ('Configured' if deriv_token else 'Not Set (Demo/Paper)')
 
     return render(request, 'profile.html', {
         'user_info': user_info,
-        'bot_state': BOT_STATE if 'BOT_STATE' in globals() else {},
+        'bot_state': user_bot_state,
         'masked_token': masked_token,
         'ip_address': _get_client_ip(request),
         'msg': msg,
@@ -347,38 +349,129 @@ def register_view(request):
     })
 
 
-# Global in-memory bot state for dashboard demonstration
-BOT_STATE = {
-    "running": False,
-    "symbol": "R_75",
-    "timeframe": "5min",
-    "fast_ma": 10,
-    "slow_ma": 30,
-    "use_htf": False,
-    "trade_stake": 10.0,
-    "trade_duration_sec": 60,
-    "bot_run_minutes": 0,
-    "start_timestamp": None,
-    "auto_stop_at": None,
-    "initial_balance": 1000.0,
-    "balance": 1000.0,
-    "unrealized_pnl": 0.0,
-    "equity": 1000.0,
-    "daily_pnl": 0.0,
-    "daily_pnl_pct": 0.0,
-    "active_trades": 0,
-    "wins": 0,
-    "losses": 0,
-    "mode": "DEMO",
-    "api_token": "",
-    "logs": [],
-    "live_trades": [],
-    "last_signal": "HOLD",
-    "last_check_time": None,
-}
+# ── Per-User Persistent Bot State Management ──────────────────────────────────
+DATA_DIR = Path(__file__).resolve().parent / "user_bot_data"
+DATA_DIR.mkdir(exist_ok=True)
 
-risk_mgr = RiskManager(initial_balance=1000.0)
-worker = TradingBotWorker(BOT_STATE, risk_mgr)
+USER_BOT_CONTEXTS = {}
+
+
+def get_request_username(request) -> str:
+    """Extract active logged in username or fallback to 'jeremy'."""
+    return request.session.get('username') or 'jeremy'
+
+
+def get_user_state_file(username: str) -> Path:
+    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', str(username).lower())
+    return DATA_DIR / f"{safe_name}_bot_state.json"
+
+
+def save_user_bot_state(username: str, state: dict, risk_config: dict = None):
+    try:
+        file_path = get_user_state_file(username)
+        serializable_state = dict(state)
+        if risk_config:
+            serializable_state["risk_config"] = risk_config
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(serializable_state, f, indent=2, default=str)
+    except Exception as e:
+        print(f"[UserBotState] Error saving state for {username}: {e}")
+
+
+def load_user_bot_state(username: str) -> tuple[dict, dict]:
+    file_path = get_user_state_file(username)
+    default_state = {
+        "running": False,
+        "symbol": "R_75",
+        "timeframe": "5min",
+        "fast_ma": 10,
+        "slow_ma": 30,
+        "use_htf": False,
+        "trade_stake": 10.0,
+        "trade_duration_sec": 60,
+        "bot_run_minutes": 0,
+        "start_timestamp": None,
+        "auto_stop_at": None,
+        "initial_balance": 1000.0,
+        "balance": 1000.0,
+        "unrealized_pnl": 0.0,
+        "equity": 1000.0,
+        "daily_pnl": 0.0,
+        "daily_pnl_pct": 0.0,
+        "active_trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "mode": "DEMO",
+        "api_token": "",
+        "logs": [],
+        "live_trades": [],
+        "last_signal": "HOLD",
+        "last_check_time": None,
+    }
+    default_risk = {
+        "max_daily_loss_pct": 3.0,
+        "max_concurrent_trades": 2,
+        "atr_sl_multiplier": 1.5,
+        "atr_tp_multiplier": 3.0
+    }
+    if not file_path.exists():
+        return default_state, default_risk
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+            risk_cfg = saved.pop("risk_config", default_risk)
+            for k, v in default_state.items():
+                saved.setdefault(k, v)
+            return saved, risk_cfg
+    except Exception as e:
+        print(f"[UserBotState] Error loading state for {username}: {e}")
+        return default_state, default_risk
+
+
+def get_user_bot_context(username: str):
+    username = str(username).lower()
+    if username not in USER_BOT_CONTEXTS:
+        state, risk_cfg = load_user_bot_state(username)
+        risk_m = RiskManager(
+            initial_balance=state.get("initial_balance", 1000.0),
+            config=RiskConfig(
+                max_daily_loss_pct=float(risk_cfg.get("max_daily_loss_pct", 3.0)),
+                max_concurrent_trades=int(risk_cfg.get("max_concurrent_trades", 2)),
+                atr_sl_multiplier=float(risk_cfg.get("atr_sl_multiplier", 1.5)),
+                atr_tp_multiplier=float(risk_cfg.get("atr_tp_multiplier", 3.0)),
+            )
+        )
+
+        def save_cb():
+            save_user_bot_state(username, state, {
+                "max_daily_loss_pct": risk_m.config.max_daily_loss_pct,
+                "max_concurrent_trades": risk_m.config.max_concurrent_trades,
+                "atr_sl_multiplier": risk_m.config.atr_sl_multiplier,
+                "atr_tp_multiplier": risk_m.config.atr_tp_multiplier,
+            })
+
+        w = TradingBotWorker(state, risk_m, save_callback=save_cb)
+        if state.get("running", False):
+            w.start()
+
+        USER_BOT_CONTEXTS[username] = {
+            "state": state,
+            "risk_mgr": risk_m,
+            "worker": w,
+            "save_cb": save_cb,
+        }
+
+    ctx = USER_BOT_CONTEXTS[username]
+    return ctx["state"], ctx["risk_mgr"], ctx["worker"], ctx["save_cb"]
+
+
+# Fallback BOT_STATE proxy for top-level references
+def _get_default_bot_state():
+    state, _, _, _ = get_user_bot_context("jeremy")
+    return state
+
+BOT_STATE = _get_default_bot_state()
 
 
 CANDLESTICK_FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
@@ -401,7 +494,7 @@ def favicon_view(request):
 @login_required
 def index_view(request):
     """Renders main dashboard HTML page."""
-    username = request.session.get('username', 'admin')
+    username = get_request_username(request)
     profile_image = request.session.get('profile_image')
     if not profile_image:
         try:
@@ -413,9 +506,10 @@ def index_view(request):
         except Exception:
             pass
 
+    bot_state, _, _, _ = get_user_bot_context(username)
     context = {
         "symbols": SYMBOLS,
-        "bot_state": BOT_STATE,
+        "bot_state": bot_state,
         "username": username,
         "profile_image": profile_image,
     }
@@ -424,33 +518,37 @@ def index_view(request):
 
 def api_status_view(request):
     """Returns current bot status, risk state, balance, and timer info."""
+    username = get_request_username(request)
+    bot_state, risk_mgr, worker, save_cb = get_user_bot_context(username)
+
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     if not worker.is_running():
         worker.evaluate_open_trades()
-        BOT_STATE["last_check_time"] = now_str
-    elif not BOT_STATE.get("last_check_time"):
-        BOT_STATE["last_check_time"] = now_str
+        bot_state["last_check_time"] = now_str
+    elif not bot_state.get("last_check_time"):
+        bot_state["last_check_time"] = now_str
 
-    can_trade, reason = risk_mgr.can_open_trade(BOT_STATE["balance"])
-    live_trades = BOT_STATE.get("live_trades", [])
+    can_trade, reason = risk_mgr.can_open_trade(bot_state["balance"])
+    live_trades = bot_state.get("live_trades", [])
     active_count = len([t for t in live_trades if t.get("status") == "OPEN"])
-    BOT_STATE["active_trades"] = active_count
+    bot_state["active_trades"] = active_count
 
     # Calculate equity & daily PnL
-    unrealized = BOT_STATE.get("unrealized_pnl", 0.0)
-    balance = BOT_STATE.get("balance", 1000.0)
+    unrealized = bot_state.get("unrealized_pnl", 0.0)
+    balance = bot_state.get("balance", 1000.0)
     equity = round(balance + unrealized, 2)
-    initial_bal = BOT_STATE.get("initial_balance", 1000.0)
+    initial_bal = bot_state.get("initial_balance", 1000.0)
     daily_pnl = round(equity - initial_bal, 2)
     daily_pnl_pct = round((daily_pnl / initial_bal) * 100, 2) if initial_bal > 0 else 0.0
 
-    BOT_STATE["equity"] = equity
-    BOT_STATE["daily_pnl"] = daily_pnl
-    BOT_STATE["daily_pnl_pct"] = daily_pnl_pct
+    bot_state["equity"] = equity
+    bot_state["daily_pnl"] = daily_pnl
+    bot_state["daily_pnl_pct"] = daily_pnl_pct
+    save_cb()
 
     # Calculate session timer remaining seconds
     timer_remaining = None
-    auto_stop_str = BOT_STATE.get("auto_stop_at")
+    auto_stop_str = bot_state.get("auto_stop_at")
     if worker.is_running() and auto_stop_str:
         try:
             stop_dt = datetime.strptime(auto_stop_str, "%Y-%m-%d %H:%M:%S")
@@ -461,10 +559,10 @@ def api_status_view(request):
 
     return JsonResponse({
         "status": "success",
-        "state": BOT_STATE,
+        "state": bot_state,
         "timer_remaining_sec": timer_remaining,
-        "network_status": BOT_STATE.get("network_status", "ONLINE"),
-        "network_error": BOT_STATE.get("network_error_msg", ""),
+        "network_status": bot_state.get("network_status", "ONLINE"),
+        "network_error": bot_state.get("network_error_msg", ""),
         "risk_halted": risk_mgr.trading_halted,
         "halt_reason": risk_mgr.halt_reason,
         "can_trade": can_trade,
@@ -483,6 +581,8 @@ def api_toggle_view(request):
     """Toggles bot running state (Start / Stop) with custom stake, trade duration, and bot session timer."""
     from datetime import timedelta
     if request.method == "POST":
+        username = get_request_username(request)
+        bot_state, risk_mgr, worker, save_cb = get_user_bot_context(username)
         try:
             data = json.loads(request.body) if request.body else {}
         except Exception:
@@ -490,42 +590,43 @@ def api_toggle_view(request):
 
         if "stake" in data and data["stake"]:
             try:
-                BOT_STATE["trade_stake"] = float(data["stake"])
+                bot_state["trade_stake"] = float(data["stake"])
             except Exception:
                 pass
         if "trade_duration_sec" in data and data["trade_duration_sec"]:
             try:
-                BOT_STATE["trade_duration_sec"] = int(data["trade_duration_sec"])
+                bot_state["trade_duration_sec"] = int(data["trade_duration_sec"])
             except Exception:
                 pass
         if "bot_run_minutes" in data and data["bot_run_minutes"] is not None:
             try:
-                BOT_STATE["bot_run_minutes"] = int(data["bot_run_minutes"])
+                bot_state["bot_run_minutes"] = int(data["bot_run_minutes"])
             except Exception:
                 pass
 
-        BOT_STATE["running"] = not BOT_STATE["running"]
-        if BOT_STATE["running"]:
+        bot_state["running"] = not bot_state["running"]
+        if bot_state["running"]:
             now_dt = datetime.now()
-            BOT_STATE["start_timestamp"] = now_dt.strftime("%Y-%m-%d %H:%M:%S")
-            run_mins = BOT_STATE.get("bot_run_minutes", 0)
+            bot_state["start_timestamp"] = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+            run_mins = bot_state.get("bot_run_minutes", 0)
             if run_mins > 0:
-                BOT_STATE["auto_stop_at"] = (now_dt + timedelta(minutes=run_mins)).strftime("%Y-%m-%d %H:%M:%S")
+                bot_state["auto_stop_at"] = (now_dt + timedelta(minutes=run_mins)).strftime("%Y-%m-%d %H:%M:%S")
             else:
-                BOT_STATE["auto_stop_at"] = None
+                bot_state["auto_stop_at"] = None
 
             worker.start()
             status_label = "STARTED"
         else:
-            BOT_STATE["auto_stop_at"] = None
+            bot_state["auto_stop_at"] = None
             worker.stop()
             status_label = "STOPPED"
 
+        save_cb()
         return JsonResponse({
             "status": "success",
-            "running": BOT_STATE["running"],
+            "running": bot_state["running"],
             "message": f"Trading Bot {status_label}",
-            "state": BOT_STATE,
+            "state": bot_state,
         })
     return JsonResponse({"error": "POST method required"}, status=400)
 
@@ -534,27 +635,29 @@ def api_toggle_view(request):
 def api_config_view(request):
     """Updates bot configuration, credentials, trading mode, and risk management parameters."""
     if request.method == "POST":
+        username = get_request_username(request)
+        bot_state, risk_mgr, worker, save_cb = get_user_bot_context(username)
         try:
             data = json.loads(request.body)
-            BOT_STATE["symbol"] = data.get("symbol", BOT_STATE["symbol"])
-            BOT_STATE["timeframe"] = data.get("timeframe", BOT_STATE["timeframe"])
-            BOT_STATE["fast_ma"] = int(data.get("fast_ma", BOT_STATE["fast_ma"]))
-            BOT_STATE["slow_ma"] = int(data.get("slow_ma", BOT_STATE["slow_ma"]))
-            BOT_STATE["use_htf"] = bool(data.get("use_htf", BOT_STATE["use_htf"]))
+            bot_state["symbol"] = data.get("symbol", bot_state["symbol"])
+            bot_state["timeframe"] = data.get("timeframe", bot_state["timeframe"])
+            bot_state["fast_ma"] = int(data.get("fast_ma", bot_state["fast_ma"]))
+            bot_state["slow_ma"] = int(data.get("slow_ma", bot_state["slow_ma"]))
+            bot_state["use_htf"] = bool(data.get("use_htf", bot_state["use_htf"]))
 
             if "mode" in data:
-                BOT_STATE["mode"] = str(data["mode"]).upper()
+                bot_state["mode"] = str(data["mode"]).upper()
             if "api_token" in data:
-                BOT_STATE["api_token"] = str(data["api_token"]).strip()
+                bot_state["api_token"] = str(data["api_token"]).strip()
             if "app_id" in data:
-                BOT_STATE["app_id"] = str(data["app_id"]).strip() or "1089"
+                bot_state["app_id"] = str(data["app_id"]).strip() or "1089"
 
             if "trade_stake" in data:
-                BOT_STATE["trade_stake"] = float(data["trade_stake"])
+                bot_state["trade_stake"] = float(data["trade_stake"])
             if "trade_duration_sec" in data:
-                BOT_STATE["trade_duration_sec"] = int(data["trade_duration_sec"])
+                bot_state["trade_duration_sec"] = int(data["trade_duration_sec"])
             if "bot_run_minutes" in data:
-                BOT_STATE["bot_run_minutes"] = int(data["bot_run_minutes"])
+                bot_state["bot_run_minutes"] = int(data["bot_run_minutes"])
 
             # Risk parameters update
             if "max_daily_loss_pct" in data:
@@ -567,17 +670,18 @@ def api_config_view(request):
                 risk_mgr.config.atr_tp_multiplier = float(data["atr_tp_multiplier"])
 
             # Dynamically update live client instance properties
-            worker.client.paper_mode = (BOT_STATE["mode"] in ["DEMO", "PAPER"])
-            worker.client.api_token = BOT_STATE["api_token"]
-            worker.client.app_id = BOT_STATE.get("app_id", "1089")
+            worker.client.paper_mode = (bot_state["mode"] in ["DEMO", "PAPER"])
+            worker.client.api_token = bot_state["api_token"]
+            worker.client.app_id = bot_state.get("app_id", "1089")
 
-            token_status = "Configured ✅" if BOT_STATE["api_token"] else "None (Paper/Demo)"
+            token_status = "Configured ✅" if bot_state["api_token"] else "None (Paper/Demo)"
             worker.log(
-                f"⚙️ Settings & API Credentials updated! Mode: {BOT_STATE['mode']} | "
+                f"⚙️ Settings & API Credentials updated! Mode: {bot_state['mode']} | "
                 f"Token: {token_status} | Max Daily Loss: {risk_mgr.config.max_daily_loss_pct}% | "
                 f"Max Trades: {risk_mgr.config.max_concurrent_trades}"
             )
-            return JsonResponse({"status": "success", "state": BOT_STATE})
+            save_cb()
+            return JsonResponse({"status": "success", "state": bot_state})
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)
     return JsonResponse({"error": "POST method required"}, status=400)
@@ -587,27 +691,30 @@ def api_config_view(request):
 def api_reset_balance_view(request):
     """Resets paper account balance to initial state ($1,000.00)."""
     if request.method == "POST":
+        username = get_request_username(request)
+        bot_state, risk_mgr, worker, save_cb = get_user_bot_context(username)
         try:
             data = json.loads(request.body) if request.body else {}
             new_bal = float(data.get("balance", 1000.0))
         except Exception:
             new_bal = 1000.0
 
-        BOT_STATE["initial_balance"] = new_bal
-        BOT_STATE["balance"] = new_bal
-        BOT_STATE["equity"] = new_bal
-        BOT_STATE["daily_pnl"] = 0.0
-        BOT_STATE["daily_pnl_pct"] = 0.0
-        BOT_STATE["unrealized_pnl"] = 0.0
-        BOT_STATE["active_trades"] = 0
-        BOT_STATE["wins"] = 0
-        BOT_STATE["losses"] = 0
+        bot_state["initial_balance"] = new_bal
+        bot_state["balance"] = new_bal
+        bot_state["equity"] = new_bal
+        bot_state["daily_pnl"] = 0.0
+        bot_state["daily_pnl_pct"] = 0.0
+        bot_state["unrealized_pnl"] = 0.0
+        bot_state["active_trades"] = 0
+        bot_state["wins"] = 0
+        bot_state["losses"] = 0
         # Preserve live_trades history so executed trade records remain visible
         risk_mgr.daily_pnl_usd = 0.0
         risk_mgr.trading_halted = False
         risk_mgr.halt_reason = ""
         worker.log(f"Account balance reset to ${new_bal:,.2f}. Trade history preserved.")
-        return JsonResponse({"status": "success", "state": BOT_STATE})
+        save_cb()
+        return JsonResponse({"status": "success", "state": bot_state})
     return JsonResponse({"error": "POST method required"}, status=400)
 
 
@@ -615,6 +722,8 @@ def api_reset_balance_view(request):
 def api_manual_trade_view(request):
     """Places an instant manual paper/demo trade for instant dynamic testing."""
     if request.method == "POST":
+        username = get_request_username(request)
+        bot_state, risk_mgr, worker, save_cb = get_user_bot_context(username)
         try:
             data = json.loads(request.body) if request.body else {}
             direction = data.get("direction", "CALL").upper()
@@ -622,6 +731,7 @@ def api_manual_trade_view(request):
             duration_secs = int(data.get("duration", 60)) # Default 60 seconds for quick testing
 
             res = worker.execute_manual_trade(direction=direction, stake=stake, duration_seconds=duration_secs)
+            save_cb()
             return JsonResponse(res)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)
@@ -640,6 +750,65 @@ TIMEFRAME_TO_GRANULARITY = {
     "1d": 86400,
 }
 
+# Adaptive candle counts per timeframe – balance chart resolution vs load time
+TIMEFRAME_COUNT = {
+    "1min": 300,
+    "5min": 300,
+    "15min": 200,
+    "1h": 200,
+    "1hour": 200,
+    "4h": 150,
+    "1d": 100,
+}
+
+
+def get_market_status(symbol: str) -> dict:
+    """
+    Returns market open/closed status.
+    Synthetic indices (Volatility, 1HZ*) trade 24/7.
+    Forex pairs are closed Saturday UTC and Sunday UTC (+ some Sunday/Monday gaps).
+    Returns dict with: is_open, is_synthetic, reason, server_time_utc
+    """
+    now_utc = datetime.now(timezone.utc)
+    weekday = now_utc.weekday()   # Monday=0 … Sunday=6
+    hour = now_utc.hour
+
+    # Deriv synthetic indices run 24/7 – always open
+    is_synthetic = (
+        symbol.startswith("R_")
+        or symbol.startswith("1HZ")
+        or "Volatility" in symbol
+    )
+    if is_synthetic:
+        return {
+            "is_open": True,
+            "is_synthetic": True,
+            "reason": "Synthetic indices trade 24/7",
+            "server_time_utc": now_utc.strftime("%Y-%m-%d %H:%M UTC"),
+        }
+
+    # Forex – closed Friday 22:00 UTC → Sunday 22:00 UTC (approx)
+    is_open = True
+    reason = "Forex market is open"
+
+    if weekday == 5:  # Saturday – always closed
+        is_open = False
+        reason = "Forex market is closed (Weekend – Saturday)"
+    elif weekday == 6:  # Sunday – closed until ~22:00 UTC
+        if hour < 22:
+            is_open = False
+            reason = "Forex market is closed (Weekend – opens Sunday ~22:00 UTC)"
+    elif weekday == 4 and hour >= 22:  # Friday after 22:00 UTC
+        is_open = False
+        reason = "Forex market is closed (Weekend – opens Sunday ~22:00 UTC)"
+
+    return {
+        "is_open": is_open,
+        "is_synthetic": False,
+        "reason": reason,
+        "server_time_utc": now_utc.strftime("%Y-%m-%d %H:%M UTC"),
+    }
+
 
 @csrf_exempt
 def api_backtest_run_view(request):
@@ -649,10 +818,15 @@ def api_backtest_run_view(request):
     fast_ma = int(request.GET.get("fast_ma", BOT_STATE["fast_ma"]))
     slow_ma = int(request.GET.get("slow_ma", BOT_STATE["slow_ma"]))
     use_htf = request.GET.get("use_htf", "false").lower() == "true"
-    count = int(request.GET.get("count", 500))
+
+    # Adaptive count based on timeframe – no need for 500 candles on 1d chart
+    granularity = TIMEFRAME_TO_GRANULARITY.get(timeframe, 60)
+    count = TIMEFRAME_COUNT.get(timeframe, 300)
+
+    # Market status check (returned to frontend for the closed-market modal)
+    mkt_status = get_market_status(symbol)
 
     try:
-        granularity = TIMEFRAME_TO_GRANULARITY.get(timeframe, 60)
         df_base = fetch_candles_sync(symbol=symbol, granularity_seconds=granularity, count=count)
         df_tf = df_base
 
@@ -790,8 +964,18 @@ def api_backtest_run_view(request):
 
         news_feed = get_market_news_feed(symbol)
 
+        # Detect whether live Deriv data was used or synthetic fallback
+        last_candle_epoch = candles_series[-1]["time"] if candles_series else 0
+        server_now = int(datetime.now(timezone.utc).timestamp())
+        data_age_sec = server_now - last_candle_epoch if isinstance(last_candle_epoch, int) else 0
+        # If last candle is >30 min old we consider it synthetic/stale
+        data_source = "live" if (data_age_sec < granularity * 2 + 120) else "synthetic"
+
         return JsonResponse({
             "status": "success",
+            "market_status": mkt_status,
+            "data_source": data_source,
+            "granularity": granularity,
             "metrics": {
                 "total_trades": results.get("total_trades", 0),
                 "win_rate_pct": results.get("win_rate_pct", 0),
@@ -803,13 +987,16 @@ def api_backtest_run_view(request):
                 "final_balance": results.get("final_balance", BOT_STATE["balance"]),
             },
             "chart_equity": chart_data[:200],
-            "candles": candles_series[-300:],
+            "candles": candles_series,
             "trades": trades_log[:25],
             "confluence": confluence_info,
             "news_feed": news_feed,
         })
     except Exception as e:
-        return JsonResponse({"error": f"Backtest data unavailable: {str(e)}"}, status=400)
+        return JsonResponse({
+            "error": f"Backtest data unavailable: {str(e)}",
+            "market_status": mkt_status if 'mkt_status' in locals() else {},
+        }, status=400)
 
 
 def get_market_news_feed(symbol: str):

@@ -7,3 +7,4 @@ venv/
 optimization_results.csv
 db.sqlite3
 .env
+user_bot_data/

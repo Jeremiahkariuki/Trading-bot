@@ -644,6 +644,8 @@
                         <option value="5min" selected>5 Minutes</option>
                         <option value="15min">15 Minutes</option>
                         <option value="1h">1 Hour</option>
+                        <option value="4h">4 Hours</option>
+                        <option value="1d">1 Day</option>
                     </select>
                 </div>
 
@@ -772,6 +774,20 @@
                 </div>
             </div>
 
+            <!-- Dynamic Market Status Banner -->
+            <div id="marketStatusBanner" style="display: flex; margin-bottom: 14px; padding: 10px 16px; border-radius: 10px; font-size: 0.82rem; font-weight: 600; align-items: center; justify-content: space-between; border: 1px solid rgba(16,185,129,0.3); background: rgba(16,185,129,0.08); transition: all 0.3s ease;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span id="marketStatusIcon" style="font-size: 1.15rem;">🟢</span>
+                    <div>
+                        <div id="marketStatusTitle" style="font-weight: 700; color: #10b981;">Market Open & Active</div>
+                        <div id="marketStatusSub" style="font-size: 0.76rem; color: var(--text-secondary); margin-top: 2px;">Continuous 24/7 signal scanning & strategy execution active.</div>
+                    </div>
+                </div>
+                <div id="marketStatusAction">
+                    <span style="font-size: 0.72rem; font-weight: 700; background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); padding: 3px 10px; border-radius: 6px; white-space: nowrap;">🟢 Strategy Execution Live</span>
+                </div>
+            </div>
+
             <!-- Multi-Factor Signal Confluence Analysis Card -->
             <div id="confluenceCard" style="background: var(--card-inner-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 16px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -811,6 +827,7 @@
                 <div>Profit Factor: <span id="btProfitFactor" style="font-weight:700; color:#60a5fa;">--</span></div>
                 <div>Max Drawdown: <span id="btMaxDd" style="font-weight:700; color:#ef4444;">--</span></div>
                 <div>Net Strategy P&L: <span id="btNetPnl" style="font-weight:700; color:#10b981;">--</span></div>
+                <span id="dataSourceBadge" style="font-size:0.72rem; font-weight:700; padding:2px 10px; border-radius:6px; border:1px solid rgba(16,185,129,0.3); background:rgba(16,185,129,0.12); color:#10b981; white-space:nowrap; transition: all 0.3s;">🟢 Live Data</span>
             </div>
 
             <div class="chart-container" style="position: relative; height: 320px;">
@@ -1147,12 +1164,12 @@
                 const fastMaFormatted = [];
                 const slowMaFormatted = [];
                 const markers = [];
-                const tzOffset = -new Date().getTimezoneOffset() * 60;
+                // Do NOT add local tz offset — Deriv candle epochs are UTC unix timestamps;
+                // LightweightCharts timeScale handles display in local time automatically.
 
                 cachedCandlesData.forEach(c => {
-                    let rawTime = typeof c.time === 'number' ? c.time : Math.floor(new Date(c.time).getTime() / 1000);
-                    if (isNaN(rawTime)) rawTime = Math.floor(Date.now() / 1000);
-                    let time = rawTime + tzOffset;
+                    let time = typeof c.time === 'number' ? c.time : Math.floor(new Date(c.time).getTime() / 1000);
+                    if (isNaN(time)) time = Math.floor(Date.now() / 1000);
 
                     candlesFormatted.push({
                         time: time,
@@ -1185,24 +1202,6 @@
                             text: 'SELL',
                             size: 2,
                         });
-                    } else if (c.pattern_signal === 1) {
-                        markers.push({
-                            time: time,
-                            position: 'belowBar',
-                            color: '#34d399',
-                            shape: 'arrowUp',
-                            text: `${c.pattern_name || 'BUY'}`,
-                            size: 1.5,
-                        });
-                    } else if (c.pattern_signal === -1) {
-                        markers.push({
-                            time: time,
-                            position: 'aboveBar',
-                            color: '#f87171',
-                            shape: 'arrowDown',
-                            text: `${c.pattern_name || 'SELL'}`,
-                            size: 1.5,
-                        });
                     }
                 });
 
@@ -1221,13 +1220,13 @@
                 slowMaSeries.setData(uniqueSlowMa);
                 candlestickSeries.setMarkers(uniqueMarkers);
 
-                if (uniqueCandles.length > 50) {
+                const totalC = uniqueCandles.length;
+                if (totalC > 0) {
+                    const visibleBars = Math.min(totalC, 45);
                     candleChart.timeScale().setVisibleLogicalRange({
-                        from: uniqueCandles.length - 65,
-                        to: uniqueCandles.length - 1
+                        from: totalC - visibleBars,
+                        to: totalC + 2
                     });
-                } else {
-                    candleChart.timeScale().fitContent();
                 }
             }
 
@@ -1973,6 +1972,11 @@
             if (currentTab === 'candles') {
                 renderCandlestickChart();
             }
+
+            // Market status modal & data source badge
+            if (data.market_status) {
+                handleMarketStatus(data.market_status, data.data_source || 'live');
+            }
         }
 
         function updateSymbolBadge(isLoading = false) {
@@ -2017,12 +2021,10 @@
         }
 
         async function fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, isPrefetch) {
-            const url = `/api/backtest/?symbol=${symbol}&timeframe=${tf}&fast_ma=${fast}&slow_ma=${slow}&use_htf=${mtf}&count=500`;
+            const url = `/api/backtest/?symbol=${symbol}&timeframe=${tf}&fast_ma=${fast}&slow_ma=${slow}&use_htf=${mtf}`;
             try {
                 const res = await fetch(url);
-                if (!res.ok) {
-                    throw new Error(`HTTP ${res.status}`);
-                }
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
                 if (data.status === 'success') {
                     clientCache[cacheKey] = data;
@@ -2031,20 +2033,18 @@
                     const curFast = document.getElementById('fastMa').value;
                     const curSlow = document.getElementById('slowMa').value;
                     const curMtf = document.getElementById('mtfCheck').checked;
-
                     if (!isPrefetch && curSymbol === symbol && curTf === tf && String(curFast) === String(fast) && String(curSlow) === String(slow) && Boolean(curMtf) === Boolean(mtf)) {
                         renderChartFromData(data);
                     }
                 } else if (data.error) {
                     updateNetworkUI('OFFLINE', data.error);
+                    if (data.market_status) handleMarketStatus(data.market_status, 'synthetic');
                 }
             } catch(e) {
                 console.error("Backtest error:", e);
                 updateNetworkUI('OFFLINE', 'Unable to fetch backtest market data: Connection offline or slow.');
             } finally {
-                if (!isPrefetch) {
-                    updateSymbolBadge(false);
-                }
+                if (!isPrefetch) updateSymbolBadge(false);
             }
         }
 
@@ -2062,7 +2062,7 @@
             const curSlow = document.getElementById('slowMa').value;
             const curMtf = document.getElementById('mtfCheck').checked;
 
-            // INSTANT CACHE RENDER for initial manual switch (< 1ms)
+            // INSTANT CACHE RENDER for initial manual switch (<1ms)
             if (clientCache[cacheKey] && !isAutoRefresh) {
                 if (!isPrefetch && curSymbol === symbol && curTf === tf && String(curFast) === String(fast) && String(curSlow) === String(slow) && Boolean(curMtf) === Boolean(mtf)) {
                     updateSymbolBadge(false);
@@ -2071,6 +2071,11 @@
                 // Background refresh silently
                 fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, isPrefetch);
                 return;
+            }
+
+            // On auto-refresh: bust cache so fresh candles are always fetched from server
+            if (isAutoRefresh) {
+                delete clientCache[cacheKey];
             }
 
             if (!isPrefetch && !isAutoRefresh) {
@@ -2190,6 +2195,104 @@
             }
         }
 
+        // === Market Closed Modal & Status Banner Logic ===
+        let _marketClosedAcknowledged = false;
+
+        function switchToSynthetic() {
+            const symbolSelect = document.getElementById('symbolSelect');
+            if (symbolSelect) {
+                symbolSelect.value = 'R_75';
+                onSymbolChange();
+            }
+        }
+
+        function handleMarketStatus(mktStatus, dataSource) {
+            const banner = document.getElementById('marketStatusBanner');
+            const iconEl = document.getElementById('marketStatusIcon');
+            const titleEl = document.getElementById('marketStatusTitle');
+            const subEl = document.getElementById('marketStatusSub');
+            const actionEl = document.getElementById('marketStatusAction');
+
+            const symbolSelect = document.getElementById('symbolSelect');
+            const selectedSymbolText = symbolSelect ? symbolSelect.options[symbolSelect.selectedIndex]?.text || symbolSelect.value : 'Selected Symbol';
+
+            const isClosed = mktStatus && !mktStatus.is_open && !mktStatus.is_synthetic;
+
+            if (isClosed) {
+                if (banner) {
+                    banner.style.display = 'flex';
+                    banner.style.background = 'rgba(245, 158, 11, 0.12)';
+                    banner.style.borderColor = 'rgba(245, 158, 11, 0.35)';
+                }
+                if (iconEl) iconEl.innerText = '🌙';
+                if (titleEl) {
+                    titleEl.innerText = `${selectedSymbolText} — Market Closed`;
+                    titleEl.style.color = '#f59e0b';
+                }
+                if (subEl) {
+                    subEl.innerText = `${mktStatus.reason || 'Market is currently closed.'} Live bot execution paused for closed Forex pairs.`;
+                    subEl.style.color = '#fcd34d';
+                }
+                if (actionEl) {
+                    actionEl.innerHTML = `<button onclick="switchToSynthetic()" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; padding: 6px 14px; border-radius: 6px; font-weight: 700; font-size: 0.75rem; cursor: pointer; box-shadow: 0 2px 8px rgba(245,158,11,0.3);">⚡ Switch to 24/7 Volatility Index (R_75)</button>`;
+                }
+
+                // Show modal if not acknowledged yet
+                if (!_marketClosedAcknowledged) {
+                    const modal = document.getElementById('marketClosedModal');
+                    if (modal) {
+                        document.getElementById('mktClosedReason').innerText = mktStatus.reason || 'Market is currently closed.';
+                        document.getElementById('mktClosedTime').innerText = mktStatus.server_time_utc || '';
+                        modal.style.display = 'flex';
+                    }
+                }
+            } else {
+                // Market is open or synthetic (24/7)
+                _marketClosedAcknowledged = false;
+                const modal = document.getElementById('marketClosedModal');
+                if (modal) modal.style.display = 'none';
+
+                if (banner) {
+                    banner.style.display = 'flex';
+                    banner.style.background = 'rgba(16, 185, 129, 0.08)';
+                    banner.style.borderColor = 'rgba(16, 185, 129, 0.25)';
+                }
+                if (iconEl) iconEl.innerText = '🟢';
+                if (titleEl) {
+                    titleEl.innerText = `${selectedSymbolText} — Market Open & Active`;
+                    titleEl.style.color = '#10b981';
+                }
+                if (subEl) {
+                    subEl.innerText = `${mktStatus ? mktStatus.reason : 'Market open.'} Strategy settings (stake, timeframe, MA rules) are active & scanning.`;
+                    subEl.style.color = 'var(--text-secondary)';
+                }
+                if (actionEl) {
+                    actionEl.innerHTML = `<span style="font-size: 0.72rem; font-weight: 700; background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); padding: 3px 10px; border-radius: 6px; white-space: nowrap;">🟢 Strategy Execution Live</span>`;
+                }
+            }
+
+            const badge = document.getElementById('dataSourceBadge');
+            if (badge) {
+                if (dataSource === 'synthetic' || isClosed) {
+                    badge.innerHTML = '⚠️ Simulated Data';
+                    badge.style.background = 'rgba(245,158,11,0.15)';
+                    badge.style.color = '#f59e0b';
+                    badge.style.borderColor = 'rgba(245,158,11,0.4)';
+                } else {
+                    badge.innerHTML = '🟢 Live Data';
+                    badge.style.background = 'rgba(16,185,129,0.12)';
+                    badge.style.color = '#10b981';
+                    badge.style.borderColor = 'rgba(16,185,129,0.3)';
+                }
+            }
+        }
+
+        function closeMarketClosedModal(acknowledge) {
+            _marketClosedAcknowledged = acknowledge;
+            const modal = document.getElementById('marketClosedModal');
+            if (modal) modal.style.display = 'none';
+        }
+
         // Initialize on load and start 3-second polling
         window.onload = () => {
             initTheme();
@@ -2293,5 +2396,54 @@
         </div>
     </div>
 </body>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     Market Closed Modal
+═══════════════════════════════════════════════════════════════════════ -->
+<div id="marketClosedModal" class="modal-overlay" style="display:none; z-index:9999;" onclick="if(event.target===this) closeMarketClosedModal(false)">
+    <div class="modal-card" style="max-width:480px; border-color:rgba(245,158,11,0.4); text-align:center;">
+        <!-- Header glow -->
+        <div style="padding:26px 24px 16px; background:linear-gradient(135deg, rgba(245,158,11,0.12), rgba(239,68,68,0.08)); border-bottom:1px solid rgba(245,158,11,0.25); border-radius:12px 12px 0 0;">
+            <div style="font-size:3rem; margin-bottom:10px; animation: pulse 2s infinite;">🌙</div>
+            <h3 style="font-size:1.25rem; font-weight:800; margin:0 0 6px; color:#f59e0b; letter-spacing:-0.02em;">Forex Market is Closed</h3>
+            <p style="font-size:0.82rem; color:var(--text-secondary); margin:0;">The selected currency pair is currently unavailable for live trading.</p>
+        </div>
+
+        <div style="padding:20px 24px;">
+            <!-- Reason badge -->
+            <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:10px; padding:14px 18px; margin-bottom:16px;">
+                <div style="font-size:0.78rem; font-weight:700; text-transform:uppercase; color:#f59e0b; letter-spacing:0.05em; margin-bottom:6px;">Market Status</div>
+                <div id="mktClosedReason" style="font-size:0.9rem; color:var(--text-primary); font-weight:600;">Forex market is closed (Weekend)</div>
+                <div id="mktClosedTime" style="font-size:0.75rem; color:var(--text-secondary); margin-top:4px;"></div>
+            </div>
+
+            <!-- Info rows -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:20px; font-size:0.78rem;">
+                <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.2); border-radius:8px; padding:10px 12px; text-align:left;">
+                    <div style="font-weight:700; color:#10b981; margin-bottom:3px;">✅ Synthetic Indices</div>
+                    <div style="color:var(--text-secondary);">Available 24/7 — trade anytime</div>
+                </div>
+                <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); border-radius:8px; padding:10px 12px; text-align:left;">
+                    <div style="font-weight:700; color:#f87171; margin-bottom:3px;">🔴 Forex Pairs</div>
+                    <div style="color:var(--text-secondary);">Opens Sunday ~22:00 UTC</div>
+                </div>
+            </div>
+
+            <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:18px; line-height:1.5;">
+                You can still view <strong style="color:#f59e0b;">simulated historical candle data</strong> for analysis purposes, or switch to a <strong style="color:#10b981;">Volatility / Synthetic Index</strong> symbol which trades 24/7.
+            </p>
+
+            <!-- Action buttons -->
+            <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                <button onclick="closeMarketClosedModal(false)" style="padding:10px 18px; border-radius:8px; background:transparent; border:1px solid var(--border-color); color:var(--text-secondary); font-weight:600; cursor:pointer; font-size:0.83rem; transition:all 0.2s;" onmouseover="this.style.borderColor='#f59e0b';this.style.color='#f59e0b'" onmouseout="this.style.borderColor='';this.style.color=''">
+                    📊 View Historical Data
+                </button>
+                <button onclick="document.getElementById('symbolSelect').value='R_75'; onSymbolChange(); closeMarketClosedModal(true);" style="padding:10px 20px; border-radius:8px; background:linear-gradient(135deg,#10b981,#059669); color:white; border:none; font-weight:700; cursor:pointer; font-size:0.83rem; box-shadow:0 4px 14px rgba(16,185,129,0.3); transition:all 0.2s;" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform=''">
+                    ⚡ Switch to Vol 75 (24/7)
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 </html>
