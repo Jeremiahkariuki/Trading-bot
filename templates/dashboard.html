@@ -983,6 +983,11 @@
             from { opacity: 0; transform: translateX(40px); }
             to { opacity: 1; transform: translateX(0); }
         }
+        @keyframes toastPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.04); border-left-width: 6px; }
+            100% { transform: scale(1); }
+        }
     </style>
 
     <script>
@@ -1551,41 +1556,68 @@
             const container = document.getElementById('toastContainer');
             if (!container) return;
 
+            // Deduplication check: if identical message is already visible, pulse it rather than stacking duplicate toasts
+            const existingToasts = container.querySelectorAll('.app-toast');
+            for (const t of existingToasts) {
+                if (t.getAttribute('data-msg') === message) {
+                    t.style.animation = 'none';
+                    t.offsetHeight; // trigger reflow
+                    t.style.animation = 'toastPulse 0.3s ease';
+                    return;
+                }
+            }
+
+            // Cap maximum visible toasts to 2 at any time
+            if (existingToasts.length >= 2) {
+                existingToasts[0].remove();
+            }
+
             const toast = document.createElement('div');
+            toast.className = 'app-toast';
+            toast.setAttribute('data-msg', message);
+
             const isError = type === 'error' || message.includes('halted') || message.includes('limit') || message.includes('Insufficient');
+            const isSuccess = type === 'success' || type === 'info';
+
+            const accentColor = isError ? '#ef4444' : (isSuccess ? '#10b981' : '#f59e0b');
+            const icon = isError ? '🛑' : (isSuccess ? '✅' : '⚠️');
+
             toast.style.cssText = `
                 pointer-events: auto;
-                background: #0f172a;
-                border: 1px solid ${isError ? 'rgba(239, 68, 68, 0.4)' : 'rgba(245, 158, 11, 0.4)'};
-                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 15px ${isError ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)'};
-                border-radius: 10px;
-                padding: 14px 16px;
+                background: rgba(15, 23, 42, 0.94);
+                backdrop-filter: blur(12px);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-left: 4px solid ${accentColor};
+                box-shadow: 0 12px 30px -4px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 0, 0, 0.3);
+                border-radius: 8px;
+                padding: 12px 14px;
                 display: flex;
-                align-items: flex-start;
+                align-items: center;
                 gap: 12px;
                 color: #ffffff;
-                font-size: 0.85rem;
-                animation: toastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                font-size: 0.83rem;
+                animation: toastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+                transition: all 0.3s ease;
             `;
 
-            const icon = isError ? '🛑' : '⚠️';
             toast.innerHTML = `
-                <div style="font-size: 1.2rem; line-height: 1;">${icon}</div>
-                <div style="flex: 1;">
-                    <div style="font-weight: 700; margin-bottom: 2px; color: ${isError ? '#ef4444' : '#f59e0b'};">${title}</div>
-                    <div style="color: #cbd5e1; line-height: 1.4;">${message}</div>
+                <div style="font-size: 1.15rem; line-height: 1; flex-shrink: 0;">${icon}</div>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: 700; margin-bottom: 2px; color: ${accentColor}; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.03em;">${title}</div>
+                    <div style="color: #cbd5e1; line-height: 1.35; font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis;">${message}</div>
                 </div>
-                <button type="button" onclick="this.parentElement.remove()" style="background: transparent; border: none; color: #64748b; font-size: 1.1rem; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+                <button type="button" onclick="this.parentElement.remove()" style="background: transparent; border: none; color: #64748b; font-size: 1.2rem; cursor: pointer; padding: 0 4px; line-height: 1; flex-shrink: 0;" title="Dismiss">&times;</button>
             `;
 
             container.appendChild(toast);
 
             setTimeout(() => {
-                toast.style.opacity = '0';
-                toast.style.transform = 'translateX(20px)';
-                toast.style.transition = 'all 0.3s ease';
-                setTimeout(() => toast.remove(), 300);
-            }, 6000);
+                if (toast.parentElement) {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateX(20px)';
+                    setTimeout(() => toast.remove(), 300);
+                }
+            }, 4000);
         }
 
         async function placeManualTrade(direction) {
