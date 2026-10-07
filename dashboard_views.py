@@ -560,6 +560,7 @@ def api_status_view(request):
     return JsonResponse({
         "status": "success",
         "state": bot_state,
+        "market_status": get_market_status(bot_state.get("symbol", "R_75")),
         "timer_remaining_sec": timer_remaining,
         "network_status": bot_state.get("network_status", "ONLINE"),
         "network_error": bot_state.get("network_error_msg", ""),

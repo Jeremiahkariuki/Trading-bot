@@ -1655,6 +1655,9 @@
                         latestRiskConfig = data.risk_config;
                     }
                     updateStatusUI(state.running);
+                    if (data.market_status) {
+                        handleMarketStatus(data.market_status, data.data_source || 'live');
+                    }
 
                     if (!navigator.onLine || state.network_status === 'OFFLINE') {
                         updateNetworkUI('OFFLINE', state.network_error_msg || 'Market feed connection offline. Retrying...');

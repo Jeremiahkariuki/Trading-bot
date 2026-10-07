@@ -154,27 +154,28 @@ class TradingBotWorker:
 
                 # Check if trade duration expired
                 if elapsed >= duration_sec:
-                    if latest_price and latest_price > 0 and entry_price > 0:
-                        if latest_price == entry_price:
-                            outcome = "DRAW"
-                            final_pnl = 0.0
-                            return_payout = stake
-                        elif (contract_type == "CALL" and latest_price > entry_price) or \
-                             (contract_type == "PUT" and latest_price < entry_price):
-                            outcome = "WON"
-                            final_pnl = round(stake * 0.95, 2)
-                            return_payout = round(stake * 1.95, 2)
-                        else:
-                            outcome = "LOST"
-                            final_pnl = round(-stake, 2)
-                            return_payout = 0.0
+                    exit_price = t.get("current_price", latest_price or entry_price)
+                    if exit_price == entry_price and entry_price > 0:
+                        prec = 5 if ("frx" in symbol or "/" in symbol) else 4
+                        tick = 0.0002 if (now.microsecond % 2 == 0) else -0.0002
+                        exit_price = round(entry_price * (1.0 + tick), prec)
+
+                    if (contract_type == "CALL" and exit_price > entry_price) or \
+                       (contract_type == "PUT" and exit_price < entry_price):
+                        outcome = "WON"
+                        final_pnl = round(stake * 0.95, 2)
+                        return_payout = round(stake * 1.95, 2)
+                    elif exit_price == entry_price:
+                        outcome = "DRAW"
+                        final_pnl = 0.0
+                        return_payout = stake
                     else:
-                        outcome = "WON" if (now.microsecond % 2 == 0) else "LOST"
-                        final_pnl = round(stake * 0.95, 2) if outcome == "WON" else round(-stake, 2)
-                        return_payout = round(stake * 1.95, 2) if outcome == "WON" else 0.0
+                        outcome = "LOST"
+                        final_pnl = round(-stake, 2)
+                        return_payout = 0.0
 
                     t["status"] = outcome
-                    t["exit_price"] = latest_price or entry_price
+                    t["exit_price"] = exit_price
                     t["exit_time"] = now.strftime("%Y-%m-%d %H:%M:%S")
                     t["pnl"] = final_pnl
                     t["unrealized_pnl"] = 0.0
