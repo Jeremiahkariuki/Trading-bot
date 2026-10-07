@@ -55,3 +55,18 @@ class TraderAccount(models.Model):
         self.last_login = timezone.now()
         self.login_count += 1
         self.save(update_fields=['last_login', 'login_count'])
+
+    @classmethod
+    def authenticate(cls, username_or_email: str, password: str):
+        """Authenticate active user by username or email and password."""
+        try:
+            user = cls.objects.filter(
+                models.Q(username__iexact=username_or_email) | models.Q(email__iexact=username_or_email),
+                is_active=True
+            ).first()
+            if user and user.check_password(password):
+                user.record_login()
+                return user
+        except Exception:
+            pass
+        return None
