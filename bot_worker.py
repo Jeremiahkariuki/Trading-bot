@@ -425,73 +425,56 @@ class TradingBotWorker:
 
                         trade_dur_sec = int(self.bot_state.get("trade_duration_sec", 60))
 
-                        # ── NEW CANDLE detected ───────────────────────────────────
-                        if current_candle_ts != self.last_candle_timestamp:
-                            self.last_candle_timestamp = current_candle_ts
-                            demo_candle_counter += 1
-                            self.candles_checked += 1
-                            self.bot_state["candles_checked"] = self.candles_checked
+                        # ── 🤖 AUTOMATED BOT TRADES EXECUTION ─────────────────────
+                        open_trades_list = [t for t in self.bot_state.get("live_trades", []) if t.get("status") == "OPEN"]
+                        open_trades = len(open_trades_list)
+                        self.bot_state["active_trades"] = open_trades
 
-                            prec_str = (
-                                f"{latest_price:.5f}" if ("frx" in symbol or "/" in symbol)
-                                else f"{latest_price:.4f}"
-                            )
-                            fma_str = f"{self.bot_state['last_fast_ma']:.5f}" if self.bot_state.get("last_fast_ma") else "N/A"
-                            sma_str = f"{self.bot_state['last_slow_ma']:.5f}" if self.bot_state.get("last_slow_ma") else "N/A"
+                        prec_str = (
+                            f"{latest_price:.5f}" if ("frx" in symbol or "/" in symbol)
+                            else f"{latest_price:.4f}"
+                        )
 
-                            # ── 🎯 MA CROSSOVER SIGNAL — highest priority ─────────────
-                            if signal_val in [1, -1]:
-                                contract_type = "CALL" if signal_val == 1 else "PUT"
-                                direction_label = "BUY ▲" if signal_val == 1 else "SELL ▼"
-                                self.log(
-                                    f"🎯 MA CROSSOVER SIGNAL! {direction_label} on {symbol} | "
-                                    f"Price: {prec_str} | Stake: ${stake:.2f} | Duration: {trade_dur_sec}s"
-                                )
-                                self._place_bot_trade(
-                                    symbol=symbol,
-                                    contract_type=contract_type,
-                                    price=latest_price,
-                                    stake=stake,
-                                    signal_reason=f"MA Crossover {direction_label}",
-                                    duration_seconds=trade_dur_sec,
-                                )
-
-                            # ── 📊 DEMO MODE: trade every candle using trend direction ─
-                            elif is_demo and position_val != 0:
-                                # In DEMO mode, trade every new candle in trend direction
-                                contract_type = "CALL" if position_val == 1 else "PUT"
-                                trend_label = "Trend UP ↑" if position_val == 1 else "Trend DOWN ↓"
-                                self.log(
-                                    f"📊 DEMO Trend Trade [{contract_type}] | {symbol} @ {prec_str} | "
-                                    f"Stake: ${stake:.2f} | Duration: {trade_dur_sec}s | {trend_label}"
-                                )
-                                self._place_bot_trade(
-                                    symbol=symbol,
-                                    contract_type=contract_type,
-                                    price=latest_price,
-                                    stake=stake,
-                                    signal_reason=f"Demo {trend_label}",
-                                    duration_seconds=trade_dur_sec,
-                                )
+                        # If bot is running and there are no active open trades, execute a trade immediately!
+                        if self.bot_state.get("running") and open_trades == 0:
+                            if signal_val == 1:
+                                contract_type = "CALL"
+                                signal_reason = "MA Crossover BUY ▲"
+                            elif signal_val == -1:
+                                contract_type = "PUT"
+                                signal_reason = "MA Crossover SELL ▼"
+                            elif position_val == 1:
+                                contract_type = "CALL"
+                                signal_reason = "Trend UP ↑ (CALL)"
+                            elif position_val == -1:
+                                contract_type = "PUT"
+                                signal_reason = "Trend DOWN ↓ (PUT)"
                             else:
-                                # Live mode or no position — just log market status
+                                contract_type = "CALL"
+                                signal_reason = "Auto Signal Trade (CALL)"
+
+                            self.log(
+                                f"⚡ AUTO BOT ORDER [{contract_type}] — {signal_reason} | {symbol} @ {prec_str} | "
+                                f"Stake: ${stake:.2f} | Duration: {trade_dur_sec}s"
+                            )
+                            self._place_bot_trade(
+                                symbol=symbol,
+                                contract_type=contract_type,
+                                price=latest_price,
+                                stake=stake,
+                                signal_reason=signal_reason,
+                                duration_seconds=trade_dur_sec,
+                            )
+                        else:
+                            # Periodic logging while monitoring
+                            if int(time.time()) % 12 < 3:
+                                fma_str = f"{self.bot_state['last_fast_ma']:.5f}" if self.bot_state.get("last_fast_ma") else "N/A"
+                                sma_str = f"{self.bot_state['last_slow_ma']:.5f}" if self.bot_state.get("last_slow_ma") else "N/A"
                                 trend_emoji = "📈" if position_val == 1 else ("📉" if position_val == -1 else "➡️")
                                 self.log(
                                     f"{trend_emoji} Monitoring {symbol} ({timeframe}) | "
                                     f"Price: {prec_str} | Fast EMA: {fma_str} | Slow EMA: {sma_str} | "
-                                    f"Signal: {signal_text} | Equity: ${self.bot_state.get('equity', 1000):,.2f}"
-                                )
-                        else:
-                            # Same candle — just settle trades and update price, no new trade
-                            if int(time.time()) % 15 < 4:
-                                prec_str = (
-                                    f"{latest_price:.5f}" if ("frx" in symbol or "/" in symbol)
-                                    else f"{latest_price:.4f}"
-                                )
-                                open_trades = len([t for t in self.bot_state.get("live_trades", []) if t.get("status") == "OPEN"])
-                                self.log(
-                                    f"⏱ Waiting for next candle | {symbol} @ {prec_str} | "
-                                    f"Open trades: {open_trades} | Signal: {signal_text} | "
+                                    f"Active Trades: {open_trades} | Signal: {signal_text} | "
                                     f"Equity: ${self.bot_state.get('equity', 1000):,.2f}"
                                 )
 
