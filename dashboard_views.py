@@ -129,32 +129,61 @@ def logout_view(request):
 
 
 @login_required
+@require_http_methods(['GET', 'POST'])
 def profile_view(request):
-    """User profile page with account details, security settings, and logout action."""
+    """User profile page with avatar upload, account details, security settings, and logout action."""
     username = request.session.get('username', 'admin')
-    user_info = {
-        'username': username,
-        'email': f'{username}@wallstreet5.com',
-        'is_admin': True,
-        'created_at': 'System Account',
-        'last_login': datetime.fromtimestamp(request.session.get('login_time', time.time())).strftime('%Y-%m-%d %H:%M:%S'),
-        'login_count': '1',
-        'is_db_user': False,
-    }
+    msg = None
+    msg_type = 'success'
 
     try:
         from accounts.models import TraderAccount
         acc = TraderAccount.objects.filter(username__iexact=username).first()
-        if acc:
-            user_info['username'] = acc.username
-            user_info['email'] = acc.email
-            user_info['is_admin'] = acc.is_admin
-            user_info['created_at'] = acc.created_at.strftime('%Y-%m-%d %H:%M:%S')
-            user_info['last_login'] = acc.last_login.strftime('%Y-%m-%d %H:%M:%S') if acc.last_login else 'Just now'
-            user_info['login_count'] = acc.login_count
-            user_info['is_db_user'] = True
     except Exception:
-        pass
+        acc = None
+
+    if request.method == 'POST' and 'avatar_file' in request.FILES:
+        avatar_file = request.FILES['avatar_file']
+        ext = os.path.splitext(avatar_file.name)[1].lower()
+        if ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg']:
+            if avatar_file.size <= 5 * 1024 * 1024:  # 5MB limit
+                filename = f"{username}_avatar{ext}"
+                avatars_dir = os.path.join(settings.BASE_DIR, 'static', 'avatars')
+                os.makedirs(avatars_dir, exist_ok=True)
+                file_path = os.path.join(avatars_dir, filename)
+
+                with open(file_path, 'wb+') as destination:
+                    for chunk in avatar_file.chunks():
+                        destination.write(chunk)
+
+                rel_path = f"/static/avatars/{filename}?v={int(time.time())}"
+                request.session['profile_image'] = rel_path
+
+                if acc:
+                    acc.profile_image = rel_path
+                    acc.save(update_fields=['profile_image'])
+
+                msg = "Profile picture updated successfully!"
+                msg_type = "success"
+            else:
+                msg = "File size exceeds 5MB limit."
+                msg_type = "error"
+        else:
+            msg = "Invalid image format. Please upload JPG, PNG, WEBP, or GIF."
+            msg_type = "error"
+
+    profile_img = request.session.get('profile_image') or (acc.profile_image if acc else None)
+
+    user_info = {
+        'username': username,
+        'email': acc.email if acc else f'{username}@wallstreet5.com',
+        'is_admin': acc.is_admin if acc else True,
+        'created_at': acc.created_at.strftime('%Y-%m-%d %H:%M:%S') if acc else 'System Account',
+        'last_login': acc.last_login.strftime('%Y-%m-%d %H:%M:%S') if (acc and acc.last_login) else datetime.fromtimestamp(request.session.get('login_time', time.time())).strftime('%Y-%m-%d %H:%M:%S'),
+        'login_count': acc.login_count if acc else '1',
+        'is_db_user': bool(acc),
+        'profile_image': profile_img,
+    }
 
     deriv_token = BOT_STATE.get('api_token', '') if 'BOT_STATE' in globals() else ''
     masked_token = (deriv_token[:4] + '...' + deriv_token[-4:]) if len(deriv_token) >= 8 else ('Configured' if deriv_token else 'Not Set (Demo/Paper)')
@@ -164,6 +193,8 @@ def profile_view(request):
         'bot_state': BOT_STATE if 'BOT_STATE' in globals() else {},
         'masked_token': masked_token,
         'ip_address': _get_client_ip(request),
+        'msg': msg,
+        'msg_type': msg_type,
     })
 
 
@@ -370,9 +401,23 @@ def favicon_view(request):
 @login_required
 def index_view(request):
     """Renders main dashboard HTML page."""
+    username = request.session.get('username', 'admin')
+    profile_image = request.session.get('profile_image')
+    if not profile_image:
+        try:
+            from accounts.models import TraderAccount
+            acc = TraderAccount.objects.filter(username__iexact=username).first()
+            if acc and acc.profile_image:
+                profile_image = acc.profile_image
+                request.session['profile_image'] = profile_image
+        except Exception:
+            pass
+
     context = {
         "symbols": SYMBOLS,
         "bot_state": BOT_STATE,
+        "username": username,
+        "profile_image": profile_image,
     }
     return render(request, "dashboard.html", context)
 

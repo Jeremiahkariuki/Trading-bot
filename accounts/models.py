@@ -24,6 +24,7 @@ class TraderAccount(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     last_login = models.DateTimeField(null=True, blank=True)
     login_count = models.PositiveIntegerField(default=0)
+    profile_image = models.CharField(max_length=500, null=True, blank=True)
 
     class Meta:
         app_label = 'accounts'
