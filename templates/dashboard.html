@@ -1141,6 +1141,60 @@
                         borderColor: isLight ? '#cbd5e1' : '#263346',
                         timeVisible: true,
                         secondsVisible: false,
+                        tickMarkFormatter: (time, tickMarkType) => {
+                            let epochSec;
+                            if (typeof time === 'number') {
+                                epochSec = time;
+                            } else if (time && typeof time === 'object' && time.year) {
+                                const d = new Date(Date.UTC(time.year, time.month - 1, time.day));
+                                epochSec = Math.floor(d.getTime() / 1000);
+                            } else {
+                                epochSec = Math.floor(new Date(time).getTime() / 1000);
+                            }
+                            if (!epochSec || isNaN(epochSec)) return '';
+
+                            const date = new Date(epochSec * 1000);
+
+                            if (tickMarkType === 0) {
+                                return date.toLocaleDateString('en-US', { timeZone: 'Africa/Nairobi', year: 'numeric' });
+                            } else if (tickMarkType === 1) {
+                                return date.toLocaleDateString('en-US', { timeZone: 'Africa/Nairobi', month: 'short' });
+                            } else if (tickMarkType === 2) {
+                                return date.toLocaleDateString('en-US', { timeZone: 'Africa/Nairobi', day: 'numeric', month: 'short' });
+                            } else {
+                                return date.toLocaleTimeString('en-US', {
+                                    timeZone: 'Africa/Nairobi',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    hour12: false
+                                });
+                            }
+                        }
+                    },
+                    localization: {
+                        locale: 'en-US',
+                        timeFormatter: (time) => {
+                            let epochSec;
+                            if (typeof time === 'number') {
+                                epochSec = time;
+                            } else if (time && typeof time === 'object' && time.year) {
+                                const d = new Date(Date.UTC(time.year, time.month - 1, time.day));
+                                epochSec = Math.floor(d.getTime() / 1000);
+                            } else {
+                                epochSec = Math.floor(new Date(time).getTime() / 1000);
+                            }
+                            if (!epochSec || isNaN(epochSec)) return '';
+
+                            const date = new Date(epochSec * 1000);
+                            return date.toLocaleDateString('en-US', { timeZone: 'Africa/Nairobi', month: 'short', day: 'numeric' }) + ' ' +
+                                   date.toLocaleTimeString('en-US', {
+                                       timeZone: 'Africa/Nairobi',
+                                       hour: '2-digit',
+                                       minute: '2-digit',
+                                       second: '2-digit',
+                                       hour12: false
+                                   }) + ' EAT';
+                        }
                     },
                 });
 
