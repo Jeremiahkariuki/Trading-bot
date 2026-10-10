@@ -522,6 +522,16 @@
             animation: pulseDot 1.2s ease-in-out infinite;
         }
 
+        /* Refresh icon spinning */
+        .spinning-icon {
+            display: inline-block;
+            animation: refreshSpin 0.75s linear infinite;
+        }
+        @keyframes refreshSpin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
         /* Bot running banner */
         #botActivityBar {
             display: none;
@@ -708,7 +718,16 @@
                     </div>
                 </div>
 
-                <button class="btn-primary" onclick="runBacktest()">Run Backtest Simulation</button>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn-primary" style="flex: 2;" onclick="runBacktest()">Run Backtest Simulation</button>
+                    <button id="btnRefreshGraphControl" type="button" onclick="refreshGraphOnly()"
+                        title="Reload live market candlestick graph immediately"
+                        style="flex: 1; background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.4); padding: 10px 12px; border-radius: 8px; font-weight: 700; font-size: 0.8rem; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s;"
+                        onmouseover="this.style.background='rgba(59,130,246,0.25)';"
+                        onmouseout="this.style.background='rgba(59,130,246,0.15)';">
+                        🔄 Refresh Graph
+                    </button>
+                </div>
 
                 <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-color);">
                     <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
@@ -768,9 +787,18 @@
                         <span id="symbolBadgeText">--</span>
                     </span>
                 </div>
-                <div class="chart-tab-group">
-                    <button id="tabCandles" class="chart-tab-btn active" onclick="switchChartTab('candles')">Candlesticks & MAs</button>
-                    <button id="tabEquity" class="chart-tab-btn" onclick="switchChartTab('equity')">Equity Curve</button>
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <div class="chart-tab-group">
+                        <button id="tabCandles" class="chart-tab-btn active" onclick="switchChartTab('candles')">Candlesticks & MAs</button>
+                        <button id="tabEquity" class="chart-tab-btn" onclick="switchChartTab('equity')">Equity Curve</button>
+                    </div>
+                    <button id="btnRefreshGraph" onclick="refreshGraphOnly()"
+                        title="Fetch latest candle data & refresh graph"
+                        style="background: rgba(59,130,246,0.12); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); padding: 5px 12px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all 0.2s;"
+                        onmouseover="this.style.background='rgba(59,130,246,0.25)';this.style.borderColor='#60a5fa';"
+                        onmouseout="this.style.background='rgba(59,130,246,0.12)';this.style.borderColor='rgba(59,130,246,0.3)';">
+                        <span id="refreshGraphIcon">🔄</span> Refresh Graph
+                    </button>
                 </div>
             </div>
 
@@ -2118,6 +2146,39 @@
             }
 
             await fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, isPrefetch || isAutoRefresh);
+        }
+
+        async function refreshGraphOnly() {
+            const symbol = document.getElementById('symbolSelect')?.value || "R_75";
+            const tf = document.getElementById('tfSelect')?.value || "5min";
+            const fast = document.getElementById('fastMa')?.value || "10";
+            const slow = document.getElementById('slowMa')?.value || "30";
+            const mtf = document.getElementById('mtfCheck')?.checked || false;
+            const cacheKey = `${symbol}_${tf}_${fast}_${slow}_${mtf}`;
+
+            // Bust cache to fetch raw fresh market candles from server
+            delete clientCache[cacheKey];
+
+            const btn1 = document.getElementById('btnRefreshGraph');
+            const icon1 = document.getElementById('refreshGraphIcon');
+            const btn2 = document.getElementById('btnRefreshGraphControl');
+
+            if (btn1) { btn1.disabled = true; btn1.style.opacity = '0.75'; }
+            if (btn2) { btn2.disabled = true; btn2.style.opacity = '0.75'; }
+            if (icon1) icon1.classList.add('spinning-icon');
+
+            showToast('🔄 Refreshing market graph with latest data...', 'info');
+
+            try {
+                await runBacktest(false, null, true);
+                showToast('✅ Graph refreshed successfully!', 'success');
+            } catch (err) {
+                showToast('❌ Failed to refresh graph. Check connection.', 'error');
+            } finally {
+                if (btn1) { btn1.disabled = false; btn1.style.opacity = '1'; }
+                if (btn2) { btn2.disabled = false; btn2.style.opacity = '1'; }
+                if (icon1) icon1.classList.remove('spinning-icon');
+            }
         }
 
         // Lightweight pre-fetch for other timeframes on current active symbol only
