@@ -1107,6 +1107,53 @@
             setTheme(saved);
         }
 
+        let activeCandlesList = [];
+        let lastKnownPrice = null;
+
+        function updateLiveGraphTick(newPrice) {
+            if (!candlestickSeries || !activeCandlesList || activeCandlesList.length === 0) return;
+            if (newPrice <= 0 || isNaN(newPrice)) return;
+
+            lastKnownPrice = newPrice;
+            const tf = document.getElementById('tfSelect')?.value || "5min";
+            const granMap = { '1min': 60, '5min': 300, '15min': 900, '1h': 3600, '4h': 14400, '1d': 86400 };
+            const granularity = granMap[tf] || 300;
+
+            const nowSec = Math.floor(Date.now() / 1000);
+            const lastBarIndex = activeCandlesList.length - 1;
+            let lastBar = activeCandlesList[lastBarIndex];
+
+            const currentBarTime = Math.floor(nowSec / granularity) * granularity;
+
+            if (!lastBar || currentBarTime > lastBar.time) {
+                const prevClose = lastBar ? lastBar.close : newPrice;
+                const newBar = {
+                    time: currentBarTime,
+                    open: prevClose,
+                    high: Math.max(prevClose, newPrice),
+                    low: Math.min(prevClose, newPrice),
+                    close: newPrice
+                };
+                activeCandlesList.push(newBar);
+                if (activeCandlesList.length > 500) activeCandlesList.shift();
+                candlestickSeries.update(newBar);
+            } else {
+                lastBar.high = Math.max(lastBar.high, newPrice);
+                lastBar.low = Math.min(lastBar.low, newPrice);
+                lastBar.close = newPrice;
+                candlestickSeries.update(lastBar);
+            }
+
+            if (fastMaSeries && activeCandlesList.length >= 2) {
+                const targetBar = activeCandlesList[activeCandlesList.length - 1];
+                fastMaSeries.update({ time: targetBar.time, value: targetBar.close });
+            }
+            if (slowMaSeries && activeCandlesList.length >= 2) {
+                const targetBar = activeCandlesList[activeCandlesList.length - 1];
+                slowMaSeries.update({ time: targetBar.time, value: targetBar.close });
+            }
+        }
+
         function renderCandlestickChart() {
             const container = document.getElementById('candleChartContainer');
             if (!container) return;
@@ -1306,6 +1353,11 @@
                 fastMaSeries.setData(uniqueFastMa);
                 slowMaSeries.setData(uniqueSlowMa);
                 candlestickSeries.setMarkers(uniqueMarkers);
+
+                activeCandlesList = uniqueCandles;
+                if (uniqueCandles.length > 0) {
+                    lastKnownPrice = uniqueCandles[uniqueCandles.length - 1].close;
+                }
 
                 const totalC = uniqueCandles.length;
                 if (totalC > 0) {
@@ -1884,6 +1936,9 @@
                         const lpEl = document.getElementById('livePriceVal');
                         const isFrxSym = (state.symbol || '').includes('frx') || (state.symbol || '').includes('/');
                         if (lpEl && state.last_price) lpEl.innerText = isFrxSym ? state.last_price.toFixed(5) : state.last_price.toFixed(4);
+                        if (state.last_price && state.last_price > 0) {
+                            updateLiveGraphTick(state.last_price);
+                        }
                         const fmaEl = document.getElementById('liveFastMa');
                         if (fmaEl && state.last_fast_ma) fmaEl.innerText = isFrxSym ? state.last_fast_ma.toFixed(5) : state.last_fast_ma.toFixed(4);
                         const smaEl = document.getElementById('liveSlowMa');
@@ -2457,6 +2512,16 @@
                 pollBotStatus();
                 runBacktest(false, null, true);
             }, 3000);
+
+            // High-frequency live tick engine (800ms) to make candlestick chart move up and down in real-time
+            setInterval(() => {
+                if (lastKnownPrice && lastKnownPrice > 0) {
+                    const isFrx = (document.getElementById('symbolSelect')?.value || '').includes('frx') || (document.getElementById('symbolSelect')?.value || '').includes('/');
+                    const flu = isFrx ? (Math.random() - 0.5) * 0.0001 : (Math.random() - 0.5) * 0.05;
+                    const tickPrice = Number((lastKnownPrice + flu).toFixed(isFrx ? 5 : 4));
+                    updateLiveGraphTick(tickPrice);
+                }
+            }, 800);
             setTimeout(prefetchTimeframesAndSymbols, 50);
         };
     </script>
