@@ -2156,9 +2156,6 @@
             const mtf = document.getElementById('mtfCheck')?.checked || false;
             const cacheKey = `${symbol}_${tf}_${fast}_${slow}_${mtf}`;
 
-            // Bust cache to fetch raw fresh market candles from server
-            delete clientCache[cacheKey];
-
             const btn1 = document.getElementById('btnRefreshGraph');
             const icon1 = document.getElementById('refreshGraphIcon');
             const btn2 = document.getElementById('btnRefreshGraphControl');
@@ -2167,13 +2164,19 @@
             if (btn2) { btn2.disabled = true; btn2.style.opacity = '0.75'; }
             if (icon1) icon1.classList.add('spinning-icon');
 
-            showToast('🔄 Refreshing market graph with latest data...', 'info');
+            // 1. INSTANT OPTIMISTIC RENDER (0ms latency visual feedback)
+            if (clientCache[cacheKey]) {
+                renderChartFromData(clientCache[cacheKey]);
+            }
+
+            // 2. Bust cache and trigger fast background server fetch
+            delete clientCache[cacheKey];
 
             try {
-                await runBacktest(false, null, true);
-                showToast('✅ Graph refreshed successfully!', 'success');
+                await fetchBacktestData(symbol, tf, fast, slow, mtf, cacheKey, true);
+                showToast('⚡ Graph refreshed with latest market data!', 'success');
             } catch (err) {
-                showToast('❌ Failed to refresh graph. Check connection.', 'error');
+                showToast('❌ Refresh failed. Check internet connection.', 'error');
             } finally {
                 if (btn1) { btn1.disabled = false; btn1.style.opacity = '1'; }
                 if (btn2) { btn2.disabled = false; btn2.style.opacity = '1'; }

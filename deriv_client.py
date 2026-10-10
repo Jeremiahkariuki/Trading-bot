@@ -73,15 +73,15 @@ async def fetch_candles(
 
     for attempt in range(2):
         try:
-            async with websockets.connect(url, ssl=ssl_context, open_timeout=2.0) as ws:
+            async with websockets.connect(url, ssl=ssl_context, open_timeout=0.8) as ws:
                 await ws.send(json.dumps(request))
-                raw_resp = await asyncio.wait_for(ws.recv(), timeout=2.0)
+                raw_resp = await asyncio.wait_for(ws.recv(), timeout=1.0)
                 response = json.loads(raw_resp)
                 break
         except Exception as e:
             last_err = e
             if attempt == 0:
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(0.02)
                 continue
 
     if response is None:
