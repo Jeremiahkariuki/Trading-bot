@@ -11,8 +11,10 @@ Protects account capital by enforcing:
 """
 
 from dataclasses import dataclass
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 from typing import Tuple, Dict, Any
+
+EAT = timezone(timedelta(hours=3))
 
 
 @dataclass
@@ -30,15 +32,15 @@ class RiskManager:
         self.config = config or RiskConfig()
         self.initial_balance = initial_balance
         self.daily_start_balance = initial_balance
-        self.current_day: date = datetime.utcnow().date()
+        self.current_day: date = datetime.now(EAT).date()
         self.daily_pnl_usd: float = 0.0
         self.active_trades_count: int = 0
         self.trading_halted: bool = False
         self.halt_reason: str = ""
 
     def _update_day(self, current_balance: float):
-        """Resets daily P&L tracker at midnight UTC."""
-        today = datetime.utcnow().date()
+        """Resets daily P&L tracker at midnight Kenya Time (EAT)."""
+        today = datetime.now(EAT).date()
         if today != self.current_day:
             self.current_day = today
             self.daily_start_balance = current_balance

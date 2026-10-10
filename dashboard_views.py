@@ -10,6 +10,8 @@ import time
 import hashlib
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+
+EAT = timezone(timedelta(hours=3))
 from collections import defaultdict
 from django.conf import settings
 from django.shortcuts import render, redirect
@@ -179,8 +181,8 @@ def profile_view(request):
         'username': username,
         'email': acc.email if acc else f'{username}@wallstreet5.com',
         'is_admin': acc.is_admin if acc else True,
-        'created_at': acc.created_at.strftime('%Y-%m-%d %H:%M:%S') if acc else 'System Account',
-        'last_login': acc.last_login.strftime('%Y-%m-%d %H:%M:%S') if (acc and acc.last_login) else datetime.fromtimestamp(request.session.get('login_time', time.time())).strftime('%Y-%m-%d %H:%M:%S'),
+        'created_at': acc.created_at.astimezone(EAT).strftime('%Y-%m-%d %H:%M:%S EAT') if (acc and hasattr(acc.created_at, 'astimezone')) else (acc.created_at.strftime('%Y-%m-%d %H:%M:%S EAT') if acc else 'System Account'),
+        'last_login': acc.last_login.astimezone(EAT).strftime('%Y-%m-%d %H:%M:%S EAT') if (acc and acc.last_login and hasattr(acc.last_login, 'astimezone')) else datetime.fromtimestamp(request.session.get('login_time', time.time()), tz=EAT).strftime('%Y-%m-%d %H:%M:%S EAT'),
         'login_count': acc.login_count if acc else '1',
         'is_db_user': bool(acc),
         'profile_image': profile_img,
@@ -521,7 +523,7 @@ def api_status_view(request):
     username = get_request_username(request)
     bot_state, risk_mgr, worker, save_cb = get_user_bot_context(username)
 
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = datetime.now(EAT).strftime("%Y-%m-%d %H:%M:%S EAT")
     if not worker.is_running():
         worker.evaluate_open_trades()
         bot_state["last_check_time"] = now_str
@@ -551,8 +553,8 @@ def api_status_view(request):
     auto_stop_str = bot_state.get("auto_stop_at")
     if worker.is_running() and auto_stop_str:
         try:
-            stop_dt = datetime.strptime(auto_stop_str, "%Y-%m-%d %H:%M:%S")
-            remaining = int((stop_dt - datetime.now()).total_seconds())
+            stop_dt = datetime.strptime(auto_stop_str.replace(" EAT", "").strip(), "%Y-%m-%d %H:%M:%S")
+            remaining = int((stop_dt - datetime.now(EAT).replace(tzinfo=None)).total_seconds())
             timer_remaining = max(0, remaining)
         except Exception:
             timer_remaining = None
@@ -607,11 +609,11 @@ def api_toggle_view(request):
 
         bot_state["running"] = not bot_state["running"]
         if bot_state["running"]:
-            now_dt = datetime.now()
-            bot_state["start_timestamp"] = now_dt.strftime("%Y-%m-%d %H:%M:%S")
+            now_dt = datetime.now(EAT)
+            bot_state["start_timestamp"] = now_dt.strftime("%Y-%m-%d %H:%M:%S EAT")
             run_mins = bot_state.get("bot_run_minutes", 0)
             if run_mins > 0:
-                bot_state["auto_stop_at"] = (now_dt + timedelta(minutes=run_mins)).strftime("%Y-%m-%d %H:%M:%S")
+                bot_state["auto_stop_at"] = (now_dt + timedelta(minutes=run_mins)).strftime("%Y-%m-%d %H:%M:%S EAT")
             else:
                 bot_state["auto_stop_at"] = None
 
@@ -765,14 +767,16 @@ TIMEFRAME_COUNT = {
 
 def get_market_status(symbol: str) -> dict:
     """
-    Returns market open/closed status.
+    Returns market open/closed status in East Africa Kenya Time (EAT / UTC+3).
     Synthetic indices (Volatility, 1HZ*) trade 24/7.
-    Forex pairs are closed Saturday UTC and Sunday UTC (+ some Sunday/Monday gaps).
-    Returns dict with: is_open, is_synthetic, reason, server_time_utc
+    Forex pairs are closed Saturday EAT and Sunday EAT (+ Friday night/Monday morning gaps).
+    Returns dict with: is_open, is_synthetic, reason, server_time_eat, server_time_utc
     """
-    now_utc = datetime.now(timezone.utc)
-    weekday = now_utc.weekday()   # Monday=0 … Sunday=6
-    hour = now_utc.hour
+    now_eat = datetime.now(EAT)
+    weekday = now_eat.weekday()   # Monday=0 … Sunday=6
+    hour = now_eat.hour
+
+    time_str = now_eat.strftime("%Y-%m-%d %H:%M EAT (Kenya Time)")
 
     # Deriv synthetic indices run 24/7 – always open
     is_synthetic = (
@@ -785,29 +789,34 @@ def get_market_status(symbol: str) -> dict:
             "is_open": True,
             "is_synthetic": True,
             "reason": "Synthetic indices trade 24/7",
-            "server_time_utc": now_utc.strftime("%Y-%m-%d %H:%M UTC"),
+            "server_time_eat": time_str,
+            "server_time_utc": time_str,
         }
 
-    # Forex – closed Friday 22:00 UTC → Sunday 22:00 UTC (approx)
+    # Forex – closed Friday 22:00 UTC (Saturday 01:00 AM EAT) -> Sunday 22:00 UTC (Monday 01:00 AM EAT)
     is_open = True
     reason = "Forex market is open"
 
-    if weekday == 5:  # Saturday – always closed
-        is_open = False
-        reason = "Forex market is closed (Weekend – Saturday)"
-    elif weekday == 6:  # Sunday – closed until ~22:00 UTC
-        if hour < 22:
+    if weekday == 5:  # Saturday EAT
+        if hour == 0:
             is_open = False
-            reason = "Forex market is closed (Weekend – opens Sunday ~22:00 UTC)"
-    elif weekday == 4 and hour >= 22:  # Friday after 22:00 UTC
+            reason = "Forex market is closed (Weekend – opens Monday ~01:00 AM EAT)"
+        else:
+            is_open = False
+            reason = "Forex market is closed (Weekend – Saturday)"
+    elif weekday == 6:  # Sunday EAT – closed until Monday ~01:00 AM EAT
         is_open = False
-        reason = "Forex market is closed (Weekend – opens Sunday ~22:00 UTC)"
+        reason = "Forex market is closed (Weekend – opens Monday ~01:00 AM EAT)"
+    elif weekday == 0 and hour < 1:  # Monday before 01:00 AM EAT
+        is_open = False
+        reason = "Forex market is closed (Weekend – opens Monday ~01:00 AM EAT)"
 
     return {
         "is_open": is_open,
         "is_synthetic": False,
         "reason": reason,
-        "server_time_utc": now_utc.strftime("%Y-%m-%d %H:%M UTC"),
+        "server_time_eat": time_str,
+        "server_time_utc": time_str,
     }
 
 

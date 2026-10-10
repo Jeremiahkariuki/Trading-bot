@@ -14,7 +14,9 @@ DEMO MODE behaviour:
 import asyncio
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+EAT = timezone(timedelta(hours=3))
 from typing import Dict, Any, Optional
 
 from deriv_client import fetch_candles_sync
@@ -60,7 +62,7 @@ class TradingBotWorker:
         )
 
     def log(self, message: str):
-        timestamp = datetime.now().strftime("%H:%M:%S")
+        timestamp = datetime.now(EAT).strftime("%H:%M:%S EAT")
         entry = f"[{timestamp}] {message}"
         print(f"[BotWorker] {entry}")
         logs = self.bot_state.setdefault("logs", [])
@@ -105,7 +107,7 @@ class TradingBotWorker:
         if not live_trades:
             return
 
-        now = datetime.now()
+        now = datetime.now(EAT).replace(tzinfo=None)
         unrealized_sum = 0.0
         floating_payouts_sum = 0.0
         open_count = 0
@@ -118,7 +120,8 @@ class TradingBotWorker:
                 duration_sec = int(t.get("duration_seconds", 120))
 
                 try:
-                    entry_time = datetime.strptime(t["time"], "%Y-%m-%d %H:%M:%S")
+                    time_str = t["time"].replace(" EAT", "").strip()
+                    entry_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
                     elapsed = (now - entry_time).total_seconds()
                 except Exception:
                     elapsed = 999
@@ -176,7 +179,7 @@ class TradingBotWorker:
 
                     t["status"] = outcome
                     t["exit_price"] = exit_price
-                    t["exit_time"] = now.strftime("%Y-%m-%d %H:%M:%S")
+                    t["exit_time"] = datetime.now(EAT).strftime("%Y-%m-%d %H:%M:%S EAT")
                     t["pnl"] = final_pnl
                     t["unrealized_pnl"] = 0.0
                     t["floating_payout"] = 0.0
@@ -250,7 +253,7 @@ class TradingBotWorker:
 
         contract_id = f"DEMO_{int(time.time() * 1000)}"
         trade_entry = {
-            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "time": datetime.now(EAT).strftime("%Y-%m-%d %H:%M:%S EAT"),
             "contract_id": contract_id,
             "symbol": symbol,
             "type": direction.upper(),
@@ -311,7 +314,7 @@ class TradingBotWorker:
 
         contract_id = trade_result.get("contract_id", f"BOT_{int(time.time() * 1000)}")
         trade_entry = {
-            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "time": datetime.now(EAT).strftime("%Y-%m-%d %H:%M:%S EAT"),
             "contract_id": contract_id,
             "symbol": symbol,
             "type": contract_type,
@@ -363,8 +366,8 @@ class TradingBotWorker:
             auto_stop_str = self.bot_state.get("auto_stop_at")
             if auto_stop_str:
                 try:
-                    stop_dt = datetime.strptime(auto_stop_str, "%Y-%m-%d %H:%M:%S")
-                    if datetime.now() >= stop_dt:
+                    stop_dt = datetime.strptime(auto_stop_str.replace(" EAT", "").strip(), "%Y-%m-%d %H:%M:%S")
+                    if datetime.now(EAT).replace(tzinfo=None) >= stop_dt:
                         run_mins = self.bot_state.get("bot_run_minutes", 0)
                         self.log(f"⏱️ Bot session timer finished ({run_mins} min{'s' if run_mins != 1 else ''}). Automatically stopping trading bot.")
                         self.bot_state["running"] = False
@@ -382,7 +385,7 @@ class TradingBotWorker:
 
                 granularity = TIMEFRAME_TO_GRANULARITY.get(timeframe, 300)
                 df_base = fetch_candles_sync(symbol=symbol, granularity_seconds=granularity, count=300)
-                self.bot_state["last_check_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.bot_state["last_check_time"] = datetime.now(EAT).strftime("%Y-%m-%d %H:%M:%S EAT")
 
                 if df_base is not None and not df_base.empty:
                     if self.bot_state.get("network_status") == "OFFLINE":

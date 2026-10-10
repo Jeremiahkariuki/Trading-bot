@@ -1760,7 +1760,7 @@
                     } else {
                         sigEl.style.color = '#60a5fa';
                     }
-                    const localTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+                    const localTimeStr = new Date().toLocaleTimeString('en-US', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) + ' EAT';
                     const sigTimeEl = document.getElementById('signalTime');
                     if (sigTimeEl) {
                         sigTimeEl.innerText = `At: ${localTimeStr}`;
@@ -2277,7 +2277,7 @@
                     const modal = document.getElementById('marketClosedModal');
                     if (modal) {
                         document.getElementById('mktClosedReason').innerText = mktStatus.reason || 'Market is currently closed.';
-                        document.getElementById('mktClosedTime').innerText = mktStatus.server_time_utc || '';
+                        document.getElementById('mktClosedTime').innerText = mktStatus.server_time_eat || mktStatus.server_time_utc || '';
                         modal.style.display = 'flex';
                     }
                 }
@@ -2460,7 +2460,7 @@
                 </div>
                 <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); border-radius:8px; padding:10px 12px; text-align:left;">
                     <div style="font-weight:700; color:#f87171; margin-bottom:3px;">🔴 Forex Pairs</div>
-                    <div style="color:var(--text-secondary);">Opens Sunday ~22:00 UTC</div>
+                    <div style="color:var(--text-secondary);">Opens Monday ~01:00 AM EAT</div>
                 </div>
             </div>
 
